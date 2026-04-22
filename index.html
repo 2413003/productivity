@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Two-Choice</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <button class="wordmark" type="button" data-view-button="focus" aria-label="Open top tasks">
+          Two-Choice
+        </button>
+        <nav class="nav" aria-label="Primary">
+          <button type="button" data-view-button="input">Tasks</button>
+          <button type="button" data-view-button="choose">Choose</button>
+          <button type="button" data-view-button="focus">Top</button>
+        </nav>
+      </header>
+
+      <main class="stage">
+        <section class="screen" data-screen="input" aria-labelledby="tasks-title">
+          <div class="compose">
+            <div class="section-head">
+              <p class="kicker" id="tasks-title">Tasks</p>
+              <output id="draftCount" aria-live="polite">0</output>
+            </div>
+            <textarea id="taskInput" spellcheck="true" placeholder="One task per line"></textarea>
+            <div class="action-row">
+              <button class="primary" type="button" id="startBtn">Start</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen" data-screen="choose" aria-labelledby="choose-title">
+          <div class="choice-wrap">
+            <div class="sprint">
+              <span id="timeLeft">60</span>
+              <span class="meter" aria-hidden="true"><span id="meterFill"></span></span>
+              <span id="tapCount">0</span>
+            </div>
+
+            <p class="kicker center" id="choose-title">Choose first</p>
+
+            <div class="choice-stack" id="choiceStack" aria-live="polite">
+              <button class="choice-card" type="button" id="choiceA">
+                <span></span>
+              </button>
+              <div class="divider-word">or</div>
+              <button class="choice-card" type="button" id="choiceB">
+                <span></span>
+              </button>
+            </div>
+
+            <div class="quiet-row">
+              <button type="button" id="skipBtn">Skip</button>
+              <button type="button" id="undoBtn">Undo</button>
+              <button type="button" id="finishBtn">Top</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen" data-screen="focus" aria-labelledby="focus-title">
+          <div class="focus">
+            <div class="focus-head">
+              <div>
+                <p class="kicker">Next</p>
+                <h1 id="focus-title">Top 3</h1>
+              </div>
+              <div class="stepper" aria-label="Top count">
+                <button type="button" id="lessTop" aria-label="Show fewer">-</button>
+                <output id="topCount">3</output>
+                <button type="button" id="moreTop" aria-label="Show more">+</button>
+              </div>
+            </div>
+
+            <ol class="top-list" id="topList"></ol>
+
+            <div class="focus-actions">
+              <button class="primary" type="button" id="keepChoosing">Choose</button>
+              <button class="subtle" type="button" data-view-button="input">Edit</button>
+            </div>
+
+            <details class="options">
+              <summary>More</summary>
+              <div class="option-actions">
+                <button type="button" id="resetRank">Reset rank</button>
+                <button type="button" id="clearDone">Clear done</button>
+                <button type="button" id="clearAll">Clear all</button>
+              </div>
+              <ul class="all-list" id="allList"></ul>
+            </details>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
