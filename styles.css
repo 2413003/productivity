@@ -31,6 +31,8 @@ body {
 
 button,
 textarea,
+input,
+select,
 output {
   font: inherit;
   letter-spacing: 0;
@@ -43,6 +45,8 @@ button {
 
 button:focus-visible,
 textarea:focus-visible,
+input:focus-visible,
+select:focus-visible,
 summary:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent);
   outline-offset: 3px;
@@ -122,7 +126,9 @@ summary:focus-visible {
 
 .compose,
 .choice-wrap,
-.focus {
+.focus,
+.reputation,
+.public-profile {
   width: min(100%, 760px);
   margin: 0 auto;
 }
@@ -134,6 +140,7 @@ summary:focus-visible {
 
 .section-head,
 .focus-head,
+.rep-head,
 .action-row,
 .quiet-row,
 .focus-actions,
@@ -145,6 +152,7 @@ summary:focus-visible {
 
 .section-head,
 .focus-head,
+.rep-head,
 .action-row,
 .quiet-row,
 .focus-actions {
@@ -169,6 +177,8 @@ summary:focus-visible {
 }
 
 #draftCount,
+#proofCount,
+#repStatus,
 #tapCount,
 #timeLeft {
   color: var(--muted);
@@ -308,14 +318,22 @@ summary:focus-visible {
   align-self: start;
 }
 
-.focus-head {
+.focus-head,
+.rep-head {
   margin-bottom: clamp(18px, 4vw, 30px);
 }
 
-h1 {
+h1,
+#repScore,
+#publicScore {
   margin: 4px 0 0;
   font-size: clamp(2rem, 7vw, 4rem);
   line-height: 1;
+}
+
+h2 {
+  margin: 22px 0 10px;
+  font-size: 0.9rem;
 }
 
 .stepper {
@@ -341,7 +359,9 @@ h1 {
 }
 
 .top-list,
-.all-list {
+.all-list,
+.proof-list,
+.supporter-list {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -448,6 +468,150 @@ h1 {
   color: var(--muted);
 }
 
+.metric-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.metric-strip span {
+  min-height: 76px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+}
+
+.metric-strip span + span {
+  border-left: 1px solid var(--line);
+  padding-left: clamp(14px, 3vw, 24px);
+}
+
+.metric-strip strong {
+  font-size: clamp(1.35rem, 4vw, 2.1rem);
+  line-height: 1;
+}
+
+.metric-strip small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.proof-block {
+  margin-top: 28px;
+}
+
+.proof-list {
+  margin-top: 10px;
+}
+
+.proof-row,
+.supporter-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 62px;
+  border-top: 1px solid var(--line);
+  animation: rowIn 240ms ease both;
+}
+
+.proof-row:last-child,
+.supporter-row:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.proof-main,
+.supporter-main {
+  min-width: 0;
+}
+
+.proof-title,
+.supporter-name {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.proof-meta,
+.supporter-meta {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.proof-link {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--muted);
+  padding: 0 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.supporter-tag {
+  min-width: 70px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.modal {
+  width: min(calc(100% - 28px), 480px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  padding: clamp(18px, 4vw, 24px);
+}
+
+.modal::backdrop {
+  background: rgba(21, 23, 19, 0.28);
+}
+
+.modal h2 {
+  margin: 8px 0 16px;
+  overflow-wrap: anywhere;
+  font-size: clamp(1.05rem, 3vw, 1.35rem);
+  line-height: 1.25;
+}
+
+.modal form {
+  display: grid;
+  gap: 12px;
+}
+
+.modal input,
+.modal select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  padding: 0 12px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
 @keyframes screenIn {
   from {
     opacity: 0;
@@ -498,5 +662,18 @@ h1 {
 
   .task-row {
     grid-template-columns: 30px minmax(0, 1fr) auto;
+  }
+
+  .proof-row,
+  .supporter-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 12px 0;
+  }
+
+  .proof-link,
+  .supporter-tag {
+    justify-self: start;
+    text-align: left;
   }
 }

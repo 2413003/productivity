@@ -26,12 +26,45 @@
     keepChoosing: document.getElementById("keepChoosing"),
     resetRank: document.getElementById("resetRank"),
     clearDone: document.getElementById("clearDone"),
-    clearAll: document.getElementById("clearAll")
+    clearAll: document.getElementById("clearAll"),
+    repScore: document.getElementById("repScore"),
+    repStatus: document.getElementById("repStatus"),
+    doneMetric: document.getElementById("doneMetric"),
+    proofMetric: document.getElementById("proofMetric"),
+    supportMetric: document.getElementById("supportMetric"),
+    proofCount: document.getElementById("proofCount"),
+    proofList: document.getElementById("proofList"),
+    supporterList: document.getElementById("supporterList"),
+    inviteBtn: document.getElementById("inviteBtn"),
+    publicBtn: document.getElementById("publicBtn"),
+    addSupportBtn: document.getElementById("addSupportBtn"),
+    copySignalBtn: document.getElementById("copySignalBtn"),
+    publicScore: document.getElementById("publicScore"),
+    publicDone: document.getElementById("publicDone"),
+    publicProof: document.getElementById("publicProof"),
+    publicSupport: document.getElementById("publicSupport"),
+    publicProofList: document.getElementById("publicProofList"),
+    proofDialog: document.getElementById("proofDialog"),
+    proofForm: document.getElementById("proofForm"),
+    proofTask: document.getElementById("proofTask"),
+    proofEvidence: document.getElementById("proofEvidence"),
+    skipProofBtn: document.getElementById("skipProofBtn"),
+    supportDialog: document.getElementById("supportDialog"),
+    supportForm: document.getElementById("supportForm"),
+    supportName: document.getElementById("supportName"),
+    supportType: document.getElementById("supportType"),
+    supportNote: document.getElementById("supportNote"),
+    cancelSupportBtn: document.getElementById("cancelSupportBtn")
   };
 
   let state = loadState();
   let activeView = state.tasks.length ? "focus" : "input";
   let lastSyncedInput = "";
+  let proofTaskId = null;
+  let publicSnapshot = null;
+  let activeInviteProfileId = null;
+  let pendingSupportDialog = false;
+  let lastSignalUrl = "";
 
   init();
 
@@ -58,18 +91,41 @@
 
     refs.topList.addEventListener("click", handleTaskAction);
     refs.allList.addEventListener("click", handleTaskAction);
+    refs.proofList.addEventListener("click", handleProofAction);
 
     refs.resetRank.addEventListener("click", resetRank);
     refs.clearDone.addEventListener("click", clearDone);
     refs.clearAll.addEventListener("click", clearAll);
+    refs.inviteBtn.addEventListener("click", copyInviteLink);
+    refs.publicBtn.addEventListener("click", showPublicProfile);
+    refs.addSupportBtn.addEventListener("click", () => openSupportDialog());
+    refs.copySignalBtn.addEventListener("click", copyLatestSignal);
+    refs.proofForm.addEventListener("submit", saveProof);
+    refs.skipProofBtn.addEventListener("click", closeProofDialog);
+    refs.supportForm.addEventListener("submit", saveSupport);
+    refs.cancelSupportBtn.addEventListener("click", closeSupportDialog);
 
     window.addEventListener("storage", () => {
       state = loadState();
       render();
     });
+    window.addEventListener("hashchange", () => {
+      handleHash();
+      render();
+
+      if (pendingSupportDialog) {
+        window.setTimeout(() => openSupportDialog(), 120);
+      }
+    });
+
+    handleHash();
 
     window.setInterval(tick, 1000);
     render();
+
+    if (pendingSupportDialog) {
+      window.setTimeout(() => openSupportDialog(), 120);
+    }
   }
 
   function loadState() {
@@ -98,9 +154,11 @@
             losses: Number(task.losses) || 0,
             seen: Number(task.seen) || 0,
             done: Boolean(task.done),
+            doneAt: Number(task.doneAt) || null,
             createdAt: Number(task.createdAt) || Date.now()
           }))
           .filter((task) => task.text),
+        reputation: normalizeReputation(saved.reputation),
         comparisons: Array.isArray(saved.comparisons) ? saved.comparisons : [],
         pairHistory: Array.isArray(saved.pairHistory) ? saved.pairHistory : [],
         currentPair: Array.isArray(saved.currentPair) ? saved.currentPair : null
@@ -119,7 +177,44 @@
       sprintEndsAt: null,
       currentPair: null,
       comparisons: [],
-      pairHistory: []
+      pairHistory: [],
+      reputation: {
+        profileId: makeId(),
+        proofs: [],
+        supporters: []
+      }
+    };
+  }
+
+  function normalizeReputation(reputation) {
+    const source = reputation && typeof reputation === "object" ? reputation : {};
+
+    return {
+      profileId: typeof source.profileId === "string" ? source.profileId : makeId(),
+      proofs: Array.isArray(source.proofs)
+        ? source.proofs
+            .filter((proof) => proof && typeof proof.taskText === "string")
+            .map((proof) => ({
+              id: proof.id || makeId(),
+              taskId: proof.taskId || "",
+              taskText: proof.taskText.trim(),
+              evidence: typeof proof.evidence === "string" ? proof.evidence.trim() : "",
+              createdAt: Number(proof.createdAt) || Date.now()
+            }))
+            .filter((proof) => proof.taskText)
+        : [],
+      supporters: Array.isArray(source.supporters)
+        ? source.supporters
+            .filter((signal) => signal && typeof signal.name === "string")
+            .map((signal) => ({
+              id: signal.id || makeId(),
+              profileId: signal.profileId || source.profileId || "",
+              name: signal.name.trim() || "Someone",
+              type: ["verify", "kudos", "nudge"].includes(signal.type) ? signal.type : "kudos",
+              note: typeof signal.note === "string" ? signal.note.trim() : "",
+              createdAt: Number(signal.createdAt) || Date.now()
+            }))
+        : []
     };
   }
 
@@ -163,6 +258,8 @@
     renderInput();
     renderChoose();
     renderFocus();
+    renderReputation();
+    renderPublic();
   }
 
   function renderInput() {
@@ -234,6 +331,143 @@
     refs.keepChoosing.disabled = activeTasks().length < 2;
   }
 
+  function renderReputation() {
+    const stats = reputationStats();
+    refs.repScore.textContent = String(stats.score);
+    refs.doneMetric.textContent = String(stats.done);
+    refs.proofMetric.textContent = String(stats.proofs);
+    refs.supportMetric.textContent = String(stats.supporters);
+    refs.proofCount.textContent = String(stats.proofs);
+
+    refs.proofList.innerHTML = "";
+    const doneTasks = [...state.tasks]
+      .filter((task) => task.done)
+      .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0))
+      .slice(0, 8);
+
+    if (!doneTasks.length) {
+      const empty = document.createElement("li");
+      empty.className = "empty";
+      empty.textContent = "Complete a task";
+      refs.proofList.appendChild(empty);
+    } else {
+      doneTasks.forEach((task, index) => {
+        refs.proofList.appendChild(createProofRow(task, index));
+      });
+    }
+
+    refs.supporterList.innerHTML = "";
+    if (!state.reputation.supporters.length) {
+      const empty = document.createElement("li");
+      empty.className = "empty";
+      empty.textContent = "Invite someone";
+      refs.supporterList.appendChild(empty);
+    } else {
+      [...state.reputation.supporters]
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .forEach((signal, index) => {
+          refs.supporterList.appendChild(createSupporterRow(signal, index));
+        });
+    }
+  }
+
+  function renderPublic() {
+    const snapshot = publicSnapshot || publicSnapshotFromState();
+    refs.publicScore.textContent = String(snapshot.score);
+    refs.publicDone.textContent = String(snapshot.done);
+    refs.publicProof.textContent = String(snapshot.proofs);
+    refs.publicSupport.textContent = String(snapshot.supporters);
+    refs.publicProofList.innerHTML = "";
+
+    if (!snapshot.items.length) {
+      const empty = document.createElement("li");
+      empty.className = "empty";
+      empty.textContent = "No proof yet";
+      refs.publicProofList.appendChild(empty);
+      return;
+    }
+
+    snapshot.items.forEach((item, index) => {
+      refs.publicProofList.appendChild(createPublicProofRow(item, index));
+    });
+  }
+
+  function createProofRow(task, index) {
+    const proof = latestProofForTask(task.id);
+    const item = document.createElement("li");
+    item.className = "proof-row";
+    item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+
+    const main = document.createElement("span");
+    main.className = "proof-main";
+
+    const title = document.createElement("span");
+    title.className = "proof-title";
+    title.textContent = task.text;
+
+    const meta = document.createElement("span");
+    meta.className = "proof-meta";
+    meta.textContent = proof ? proof.evidence : formatDate(task.doneAt);
+
+    main.append(title, meta);
+
+    const action = document.createElement("button");
+    action.className = "proof-link";
+    action.type = "button";
+    action.dataset.id = task.id;
+    action.dataset.action = proof && isUrl(proof.evidence) ? "open-proof" : "add-proof";
+    action.textContent = proof && isUrl(proof.evidence) ? "Open" : "Proof";
+
+    item.append(main, action);
+    return item;
+  }
+
+  function createSupporterRow(signal, index) {
+    const item = document.createElement("li");
+    item.className = "supporter-row";
+    item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+
+    const main = document.createElement("span");
+    main.className = "supporter-main";
+
+    const name = document.createElement("span");
+    name.className = "supporter-name";
+    name.textContent = signal.name;
+
+    const meta = document.createElement("span");
+    meta.className = "supporter-meta";
+    meta.textContent = signal.note || formatDate(signal.createdAt);
+
+    const tag = document.createElement("span");
+    tag.className = "supporter-tag";
+    tag.textContent = signal.type;
+
+    main.append(name, meta);
+    item.append(main, tag);
+    return item;
+  }
+
+  function createPublicProofRow(item, index) {
+    const row = document.createElement("li");
+    row.className = "proof-row";
+    row.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+
+    const main = document.createElement("span");
+    main.className = "proof-main";
+
+    const title = document.createElement("span");
+    title.className = "proof-title";
+    title.textContent = item.taskText;
+
+    const meta = document.createElement("span");
+    meta.className = "proof-meta";
+    meta.textContent = item.evidence || item.date || "Done";
+
+    main.append(title, meta);
+    row.appendChild(main);
+    return row;
+  }
+
   function createTaskRow(task, rank, action) {
     const item = document.createElement("li");
     item.className = `task-row${task.done ? " done" : ""}`;
@@ -299,6 +533,7 @@
         losses: 0,
         seen: 0,
         done: false,
+        doneAt: null,
         createdAt: Date.now() + Math.random()
       };
     });
@@ -412,11 +647,333 @@
       return;
     }
 
-    task.done = button.dataset.action === "done";
+    if (button.dataset.action === "done") {
+      task.done = true;
+      task.doneAt = Date.now();
+      openProofDialog(task);
+    } else {
+      task.done = false;
+      task.doneAt = null;
+      state.reputation.proofs = state.reputation.proofs.filter((proof) => proof.taskId !== task.id);
+    }
+
     state.currentPair = null;
     ensurePair();
     saveState();
     render();
+  }
+
+  function handleProofAction(event) {
+    const action = event.target.closest("[data-action][data-id]");
+    if (!action) {
+      return;
+    }
+
+    const task = findTask(action.dataset.id);
+    if (!task) {
+      return;
+    }
+
+    if (action.dataset.action === "open-proof") {
+      const proof = latestProofForTask(task.id);
+      if (proof && isUrl(proof.evidence)) {
+        window.open(proof.evidence, "_blank", "noopener");
+      }
+      return;
+    }
+
+    openProofDialog(task);
+  }
+
+  function openProofDialog(task) {
+    proofTaskId = task.id;
+    refs.proofTask.textContent = task.text;
+    refs.proofEvidence.value = latestProofForTask(task.id)?.evidence || "";
+
+    if (typeof refs.proofDialog.showModal === "function") {
+      refs.proofDialog.showModal();
+      refs.proofEvidence.focus();
+    }
+  }
+
+  function closeProofDialog() {
+    proofTaskId = null;
+    if (refs.proofDialog.open) {
+      refs.proofDialog.close();
+    }
+  }
+
+  function saveProof(event) {
+    event.preventDefault();
+
+    const task = findTask(proofTaskId);
+    const evidence = refs.proofEvidence.value.trim();
+    if (!task || !evidence) {
+      closeProofDialog();
+      return;
+    }
+
+    const existing = latestProofForTask(task.id);
+    if (existing) {
+      existing.evidence = evidence;
+      existing.createdAt = Date.now();
+    } else {
+      state.reputation.proofs.push({
+        id: makeId(),
+        taskId: task.id,
+        taskText: task.text,
+        evidence,
+        createdAt: Date.now()
+      });
+    }
+
+    refs.repStatus.textContent = "Proof saved";
+    closeProofDialog();
+    saveState();
+    render();
+  }
+
+  function openSupportDialog() {
+    refs.supportName.value = "";
+    refs.supportType.value = "verify";
+    refs.supportNote.value = "";
+
+    if (typeof refs.supportDialog.showModal === "function") {
+      refs.supportDialog.showModal();
+      refs.supportName.focus();
+    }
+  }
+
+  function closeSupportDialog() {
+    if (refs.supportDialog.open) {
+      refs.supportDialog.close();
+    }
+    activeInviteProfileId = null;
+    pendingSupportDialog = false;
+  }
+
+  function saveSupport(event) {
+    event.preventDefault();
+
+    const targetProfileId = activeInviteProfileId || state.reputation.profileId;
+    const signal = {
+      id: makeId(),
+      profileId: targetProfileId,
+      name: refs.supportName.value.trim() || "Someone",
+      type: refs.supportType.value,
+      note: refs.supportNote.value.trim(),
+      createdAt: Date.now()
+    };
+
+    if (!activeInviteProfileId || activeInviteProfileId === state.reputation.profileId) {
+      addSupportSignal(signal);
+      saveState();
+    }
+
+    lastSignalUrl = signalUrl(signal);
+    copyText(lastSignalUrl, "Signal copied");
+    closeSupportDialog();
+    render();
+  }
+
+  function addSupportSignal(signal) {
+    if (state.reputation.supporters.some((existing) => existing.id === signal.id)) {
+      return;
+    }
+
+    state.reputation.supporters.push({
+      id: signal.id || makeId(),
+      profileId: signal.profileId || state.reputation.profileId,
+      name: signal.name || "Someone",
+      type: ["verify", "kudos", "nudge"].includes(signal.type) ? signal.type : "kudos",
+      note: signal.note || "",
+      createdAt: Number(signal.createdAt) || Date.now()
+    });
+    refs.repStatus.textContent = "Signal added";
+  }
+
+  function copyInviteLink() {
+    copyText(inviteUrl(), "Invite copied");
+  }
+
+  function showPublicProfile() {
+    publicSnapshot = publicSnapshotFromState();
+    copyText(publicUrl(publicSnapshot), "Public copied");
+    activeView = "public";
+    render();
+  }
+
+  function copyLatestSignal() {
+    const latest = [...state.reputation.supporters].sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (!latest && !lastSignalUrl) {
+      refs.repStatus.textContent = "No signal";
+      return;
+    }
+
+    copyText(lastSignalUrl || signalUrl(latest), "Signal copied");
+  }
+
+  function reputationStats() {
+    const done = state.tasks.filter((task) => task.done).length;
+    const proofs = state.reputation.proofs.filter((proof) => proof.evidence).length;
+    const supporters = state.reputation.supporters.length;
+    const supportScore = state.reputation.supporters.reduce((total, signal) => {
+      if (signal.type === "verify") {
+        return total + 16;
+      }
+
+      if (signal.type === "nudge") {
+        return total - 5;
+      }
+
+      return total + 6;
+    }, 0);
+    const score = Math.max(0, Math.round(done * 10 + proofs * 12 + supportScore));
+
+    return { score, done, proofs, supporters };
+  }
+
+  function latestProofForTask(taskId) {
+    return [...state.reputation.proofs]
+      .filter((proof) => proof.taskId === taskId)
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+  }
+
+  function publicSnapshotFromState() {
+    const stats = reputationStats();
+    const items = [...state.reputation.proofs]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 8)
+      .map((proof) => ({
+        taskText: proof.taskText,
+        evidence: proof.evidence,
+        date: formatDate(proof.createdAt)
+      }));
+
+    return {
+      type: "public-profile",
+      score: stats.score,
+      done: stats.done,
+      proofs: stats.proofs,
+      supporters: stats.supporters,
+      updatedAt: Date.now(),
+      items
+    };
+  }
+
+  function handleHash() {
+    const hash = window.location.hash.slice(1);
+    if (!hash) {
+      return;
+    }
+
+    const [mode, value] = hash.split("=");
+    if (!value) {
+      return;
+    }
+
+    const payload = decodePayload(value);
+    if (!payload) {
+      return;
+    }
+
+    if (mode === "public" && payload.type === "public-profile") {
+      publicSnapshot = {
+        score: Number(payload.score) || 0,
+        done: Number(payload.done) || 0,
+        proofs: Number(payload.proofs) || 0,
+        supporters: Number(payload.supporters) || 0,
+        items: Array.isArray(payload.items) ? payload.items.slice(0, 8) : []
+      };
+      activeView = "public";
+      return;
+    }
+
+    if (mode === "support" && payload.type === "support-invite") {
+      activeInviteProfileId = payload.profileId || null;
+      pendingSupportDialog = true;
+      activeView = "reputation";
+      return;
+    }
+
+    if (mode === "signal" && payload.type === "support-signal" && payload.signal) {
+      activeView = "reputation";
+      if (payload.signal.profileId === state.reputation.profileId) {
+        addSupportSignal(payload.signal);
+        saveState();
+        refs.repStatus.textContent = "Signal imported";
+      } else {
+        refs.repStatus.textContent = "Wrong profile";
+      }
+
+      history.replaceState(null, "", window.location.href.split("#")[0]);
+    }
+  }
+
+  function inviteUrl() {
+    return `${baseUrl()}#support=${encodePayload({
+      type: "support-invite",
+      profileId: state.reputation.profileId,
+      createdAt: Date.now()
+    })}`;
+  }
+
+  function publicUrl(snapshot) {
+    return `${baseUrl()}#public=${encodePayload(snapshot)}`;
+  }
+
+  function signalUrl(signal) {
+    return `${baseUrl()}#signal=${encodePayload({
+      type: "support-signal",
+      signal
+    })}`;
+  }
+
+  function baseUrl() {
+    return window.location.href.split("#")[0];
+  }
+
+  function encodePayload(payload) {
+    const json = JSON.stringify(payload);
+    const binary = encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (_, hex) =>
+      String.fromCharCode(Number.parseInt(hex, 16))
+    );
+
+    return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function decodePayload(value) {
+    try {
+      const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+      const binary = window.atob(base64);
+      const json = decodeURIComponent(
+        Array.from(binary)
+          .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
+          .join("")
+      );
+
+      return JSON.parse(json);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async function copyText(text, status) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+
+    refs.repStatus.textContent = status;
   }
 
   function resetRank() {
@@ -437,7 +994,9 @@
   }
 
   function clearDone() {
+    const removed = new Set(state.tasks.filter((task) => task.done).map((task) => task.id));
     state.tasks = state.tasks.filter((task) => !task.done);
+    state.reputation.proofs = state.reputation.proofs.filter((proof) => !removed.has(proof.taskId));
     state.currentPair = null;
     state.comparisons = [];
     state.pairHistory = [];
@@ -590,6 +1149,26 @@
 
   function expectedScore(a, b) {
     return 1 / (1 + Math.pow(10, (b - a) / 400));
+  }
+
+  function isUrl(value) {
+    try {
+      const url = new URL(value);
+      return url.protocol === "http:" || url.protocol === "https:";
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function formatDate(value) {
+    if (!value) {
+      return "Done";
+    }
+
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric"
+    }).format(new Date(value));
   }
 
   function remainingMs() {

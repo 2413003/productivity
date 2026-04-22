@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Priority</title>
+    <title>Do</title>
     <link rel="icon" type="image/png" href="https://cdn.shopify.com/s/files/1/1017/6456/3275/files/priority_logo_1.png?v=1776855479">
     <link rel="apple-touch-icon" href="https://cdn.shopify.com/s/files/1/1017/6456/3275/files/priority_logo_1.png?v=1776855479">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -15,12 +15,13 @@
     <div class="shell">
       <header class="topbar">
         <button class="wordmark" type="button" data-view-button="focus" aria-label="Open top tasks">
-          Priority
+          Do
         </button>
         <nav class="nav" aria-label="Primary">
           <button type="button" data-view-button="input">Tasks</button>
           <button type="button" data-view-button="choose">Choose</button>
           <button type="button" data-view-button="focus">Top</button>
+          <button type="button" data-view-button="reputation">Rep</button>
         </nav>
       </header>
 
@@ -98,8 +99,96 @@
             </details>
           </div>
         </section>
+
+        <section class="screen" data-screen="reputation" aria-labelledby="rep-title">
+          <div class="reputation">
+            <div class="rep-head">
+              <div>
+                <p class="kicker" id="rep-title">Reputation</p>
+                <h1 id="repScore">0</h1>
+              </div>
+              <output id="repStatus" aria-live="polite"></output>
+            </div>
+
+            <div class="metric-strip" aria-label="Reputation signals">
+              <span><strong id="doneMetric">0</strong><small>Done</small></span>
+              <span><strong id="proofMetric">0</strong><small>Proof</small></span>
+              <span><strong id="supportMetric">0</strong><small>Circle</small></span>
+            </div>
+
+            <div class="focus-actions">
+              <button class="primary" type="button" id="inviteBtn">Invite</button>
+              <button class="subtle" type="button" id="publicBtn">Public</button>
+            </div>
+
+            <div class="proof-block">
+              <div class="section-head">
+                <p class="kicker">Proof</p>
+                <output id="proofCount" aria-live="polite">0</output>
+              </div>
+              <ul class="proof-list" id="proofList"></ul>
+            </div>
+
+            <details class="options">
+              <summary>Circle</summary>
+              <div class="option-actions">
+                <button type="button" id="addSupportBtn">Add signal</button>
+                <button type="button" id="copySignalBtn">Copy latest</button>
+              </div>
+              <ul class="supporter-list" id="supporterList"></ul>
+            </details>
+          </div>
+        </section>
+
+        <section class="screen" data-screen="public" aria-labelledby="public-title">
+          <div class="public-profile">
+            <div class="rep-head">
+              <div>
+                <p class="kicker">Public</p>
+                <h1 id="publicScore">0</h1>
+              </div>
+              <button class="subtle" type="button" data-view-button="reputation">Mine</button>
+            </div>
+            <div class="metric-strip" aria-label="Public signals">
+              <span><strong id="publicDone">0</strong><small>Done</small></span>
+              <span><strong id="publicProof">0</strong><small>Proof</small></span>
+              <span><strong id="publicSupport">0</strong><small>Circle</small></span>
+            </div>
+            <h2 id="public-title">Proof</h2>
+            <ul class="proof-list" id="publicProofList"></ul>
+          </div>
+        </section>
       </main>
     </div>
+
+    <dialog class="modal" id="proofDialog">
+      <form method="dialog" id="proofForm">
+        <p class="kicker">Proof</p>
+        <h2 id="proofTask">Task</h2>
+        <input id="proofEvidence" type="text" autocomplete="off" placeholder="Link or note">
+        <div class="dialog-actions">
+          <button class="subtle" value="skip" type="button" id="skipProofBtn">Skip</button>
+          <button class="primary" value="save" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="supportDialog">
+      <form method="dialog" id="supportForm">
+        <p class="kicker">Signal</p>
+        <input id="supportName" type="text" autocomplete="name" placeholder="Name">
+        <select id="supportType" aria-label="Signal type">
+          <option value="verify">Verified</option>
+          <option value="kudos">Kudos</option>
+          <option value="nudge">Nudge</option>
+        </select>
+        <input id="supportNote" type="text" autocomplete="off" placeholder="Note">
+        <div class="dialog-actions">
+          <button class="subtle" type="button" id="cancelSupportBtn">Cancel</button>
+          <button class="primary" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
 
     <script src="script.js"></script>
   </body>
