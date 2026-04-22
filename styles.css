@@ -128,7 +128,8 @@ summary:focus-visible {
 .choice-wrap,
 .focus,
 .reputation,
-.public-profile {
+.public-profile,
+.account {
   width: min(100%, 760px);
   margin: 0 auto;
 }
@@ -501,6 +502,26 @@ h2 {
 
 .proof-block {
   margin-top: 28px;
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.auth-form input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 0 12px;
+}
+
+.backend-form {
+  margin: 0 0 12px;
 }
 
 .proof-list {

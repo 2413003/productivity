@@ -1,7 +1,15 @@
 (function () {
   const STORE_KEY = "priority-state-v1";
   const LEGACY_STORE_KEY = "two-choice-state-v1";
+  const BACKEND_CONFIG_KEY = "do-supabase-config-v1";
+  const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
   const SPRINT_MS = 60000;
+  const TABLES = {
+    profiles: "do_task_bracket_v1_profiles",
+    tasks: "do_task_bracket_v1_tasks",
+    proofs: "do_task_bracket_v1_proofs",
+    supportSignals: "do_task_bracket_v1_support_signals"
+  };
 
   const refs = {
     screens: Array.from(document.querySelectorAll("[data-screen]")),
@@ -54,14 +62,33 @@
     supportName: document.getElementById("supportName"),
     supportType: document.getElementById("supportType"),
     supportNote: document.getElementById("supportNote"),
-    cancelSupportBtn: document.getElementById("cancelSupportBtn")
+    cancelSupportBtn: document.getElementById("cancelSupportBtn"),
+    accountName: document.getElementById("accountName"),
+    syncStatus: document.getElementById("syncStatus"),
+    authForm: document.getElementById("authForm"),
+    authEmail: document.getElementById("authEmail"),
+    authPassword: document.getElementById("authPassword"),
+    signInBtn: document.getElementById("signInBtn"),
+    signUpBtn: document.getElementById("signUpBtn"),
+    signOutBtn: document.getElementById("signOutBtn"),
+    syncBtn: document.getElementById("syncBtn"),
+    supabaseUrl: document.getElementById("supabaseUrl"),
+    supabaseAnonKey: document.getElementById("supabaseAnonKey"),
+    saveBackendBtn: document.getElementById("saveBackendBtn")
   };
 
   let state = loadState();
+  let backendConfig = loadBackendConfig();
+  let supabaseClient = null;
+  let session = null;
+  let cloudSaveTimer = null;
+  let cloudBusy = false;
   let activeView = state.tasks.length ? "focus" : "input";
   let lastSyncedInput = "";
   let proofTaskId = null;
   let publicSnapshot = null;
+  let pendingPublicProfileId = null;
+  let pendingSignal = null;
   let activeInviteProfileId = null;
   let pendingSupportDialog = false;
   let lastSignalUrl = "";
@@ -104,6 +131,11 @@
     refs.skipProofBtn.addEventListener("click", closeProofDialog);
     refs.supportForm.addEventListener("submit", saveSupport);
     refs.cancelSupportBtn.addEventListener("click", closeSupportDialog);
+    refs.authForm.addEventListener("submit", signIn);
+    refs.signUpBtn.addEventListener("click", signUp);
+    refs.signOutBtn.addEventListener("click", signOut);
+    refs.syncBtn.addEventListener("click", syncNow);
+    refs.saveBackendBtn.addEventListener("click", saveBackendConfigFromForm);
 
     window.addEventListener("storage", () => {
       state = loadState();
@@ -119,6 +151,8 @@
     });
 
     handleHash();
+    populateBackendForm();
+    connectBackend();
 
     window.setInterval(tick, 1000);
     render();
@@ -220,6 +254,424 @@
 
   function saveState() {
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    scheduleCloudSave();
+  }
+
+  function saveStateLocalOnly() {
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  }
+
+  function loadBackendConfig() {
+    try {
+      const defaultConfig = window.DO_SUPABASE_CONFIG || {};
+      const saved = JSON.parse(localStorage.getItem(BACKEND_CONFIG_KEY) || "null");
+      if (!saved || typeof saved.url !== "string" || typeof saved.anonKey !== "string") {
+        return {
+          url: typeof defaultConfig.url === "string" ? defaultConfig.url.trim() : "",
+          anonKey: typeof defaultConfig.anonKey === "string" ? defaultConfig.anonKey.trim() : ""
+        };
+      }
+
+      return {
+        url: saved.url.trim(),
+        anonKey: saved.anonKey.trim()
+      };
+    } catch (error) {
+      return { url: "", anonKey: "" };
+    }
+  }
+
+  function populateBackendForm() {
+    refs.supabaseUrl.value = backendConfig.url || "";
+    refs.supabaseAnonKey.value = backendConfig.anonKey || "";
+  }
+
+  function saveBackendConfigFromForm() {
+    backendConfig = {
+      url: refs.supabaseUrl.value.trim(),
+      anonKey: refs.supabaseAnonKey.value.trim()
+    };
+    localStorage.setItem(BACKEND_CONFIG_KEY, JSON.stringify(backendConfig));
+    setSyncStatus("Connecting");
+    connectBackend();
+  }
+
+  async function connectBackend() {
+    if (!backendConfig.url || !backendConfig.anonKey) {
+      setSyncStatus("Local");
+      render();
+      return;
+    }
+
+    try {
+      const { createClient } = await import(SUPABASE_CDN);
+      supabaseClient = createClient(backendConfig.url, backendConfig.anonKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true
+        }
+      });
+
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error) {
+        throw error;
+      }
+
+      session = data.session;
+      supabaseClient.auth.onAuthStateChange(async (_event, nextSession) => {
+        session = nextSession;
+        if (session) {
+          await syncNow();
+        } else {
+          setSyncStatus("Signed out");
+          render();
+        }
+      });
+
+      if (session) {
+        await syncNow();
+        await processPendingSignal();
+      } else {
+        setSyncStatus("Ready");
+        render();
+      }
+
+      if (pendingPublicProfileId) {
+        await loadPublicProfile(pendingPublicProfileId);
+      }
+    } catch (error) {
+      supabaseClient = null;
+      session = null;
+      setSyncStatus("Backend error");
+      console.error(error);
+      render();
+    }
+  }
+
+  async function signIn(event) {
+    event.preventDefault();
+    if (!supabaseClient) {
+      setSyncStatus("Add backend");
+      return;
+    }
+
+    const email = refs.authEmail.value.trim();
+    const password = refs.authPassword.value;
+    if (!email || !password) {
+      setSyncStatus("Email + password");
+      return;
+    }
+
+    setSyncStatus("Signing in");
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) {
+      setSyncStatus(error.message);
+      return;
+    }
+
+    session = data.session;
+    await syncNow();
+    await processPendingSignal();
+  }
+
+  async function signUp() {
+    if (!supabaseClient) {
+      setSyncStatus("Add backend");
+      return;
+    }
+
+    const email = refs.authEmail.value.trim();
+    const password = refs.authPassword.value;
+    if (!email || !password) {
+      setSyncStatus("Email + password");
+      return;
+    }
+
+    setSyncStatus("Joining");
+    const { data, error } = await supabaseClient.auth.signUp({ email, password });
+    if (error) {
+      setSyncStatus(error.message);
+      return;
+    }
+
+    session = data.session;
+    if (session) {
+      await syncNow();
+    } else {
+      setSyncStatus("Check email");
+      render();
+    }
+  }
+
+  async function signOut() {
+    if (!supabaseClient) {
+      return;
+    }
+
+    await supabaseClient.auth.signOut();
+    session = null;
+    setSyncStatus("Signed out");
+    render();
+  }
+
+  async function syncNow() {
+    if (!supabaseClient || !session || cloudBusy) {
+      return;
+    }
+
+    cloudBusy = true;
+    setSyncStatus("Syncing");
+    render();
+
+    try {
+      const localSnapshot = captureSyncSnapshot();
+      await ensureProfile();
+      await pullCloudState();
+      mergeSyncSnapshot(localSnapshot);
+      await pushCloudState();
+      await pullCloudState();
+      setSyncStatus("Synced");
+    } catch (error) {
+      console.error(error);
+      setSyncStatus(error.message || "Sync error");
+    } finally {
+      cloudBusy = false;
+      render();
+    }
+  }
+
+  function captureSyncSnapshot() {
+    return {
+      tasks: state.tasks.map((task) => ({ ...task })),
+      proofs: state.reputation.proofs.map((proof) => ({ ...proof })),
+      supporters: state.reputation.supporters.map((signal) => ({ ...signal })),
+      topCount: state.topCount
+    };
+  }
+
+  function mergeSyncSnapshot(snapshot) {
+    const taskById = new Map(state.tasks.map((task) => [task.id, task]));
+    snapshot.tasks.forEach((task) => {
+      taskById.set(task.id, { ...taskById.get(task.id), ...task });
+    });
+
+    const proofById = new Map(state.reputation.proofs.map((proof) => [proof.id, proof]));
+    snapshot.proofs.forEach((proof) => {
+      proofById.set(proof.id, { ...proofById.get(proof.id), ...proof });
+    });
+
+    const signalById = new Map(state.reputation.supporters.map((signal) => [signal.id, signal]));
+    snapshot.supporters.forEach((signal) => {
+      signalById.set(signal.id, { ...signalById.get(signal.id), ...signal });
+    });
+
+    state.tasks = Array.from(taskById.values());
+    state.reputation.proofs = Array.from(proofById.values());
+    state.reputation.supporters = Array.from(signalById.values());
+    state.topCount = Math.max(state.topCount, snapshot.topCount || 1);
+    saveStateLocalOnly();
+  }
+
+  function scheduleCloudSave() {
+    if (!supabaseClient || !session || cloudBusy) {
+      return;
+    }
+
+    window.clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = window.setTimeout(async () => {
+      if (!supabaseClient || !session || cloudBusy) {
+        return;
+      }
+
+      cloudBusy = true;
+      setSyncStatus("Saving");
+      try {
+        await ensureProfile();
+        await pushCloudState();
+        setSyncStatus("Saved");
+      } catch (error) {
+        console.error(error);
+        setSyncStatus("Save error");
+      } finally {
+        cloudBusy = false;
+        render();
+      }
+    }, 700);
+  }
+
+  async function ensureProfile() {
+    const user = session.user;
+    state.reputation.profileId = user.id;
+    const stats = reputationStats();
+    const displayName = user.email ? user.email.split("@")[0] : "Do user";
+
+    const { error } = await supabaseClient
+      .from(TABLES.profiles)
+      .upsert(
+        {
+          id: user.id,
+          display_name: displayName,
+          public_profile: true,
+          reputation_score: stats.score,
+          done_count: stats.done,
+          proof_count: stats.proofs,
+          support_count: stats.supporters
+        },
+        { onConflict: "id" }
+      );
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  async function pushCloudState() {
+    const ownerId = session.user.id;
+    const stats = reputationStats();
+
+    const { error: profileError } = await supabaseClient
+      .from(TABLES.profiles)
+      .update({
+        reputation_score: stats.score,
+        done_count: stats.done,
+        proof_count: stats.proofs,
+        support_count: stats.supporters
+      })
+      .eq("id", ownerId);
+    if (profileError) {
+      throw profileError;
+    }
+
+    const { error: proofDeleteError } = await supabaseClient.from(TABLES.proofs).delete().eq("owner_id", ownerId);
+    if (proofDeleteError) {
+      throw proofDeleteError;
+    }
+
+    const { error: taskDeleteError } = await supabaseClient.from(TABLES.tasks).delete().eq("owner_id", ownerId);
+    if (taskDeleteError) {
+      throw taskDeleteError;
+    }
+
+    if (state.tasks.length) {
+      const { error } = await supabaseClient.from(TABLES.tasks).insert(
+        state.tasks.map((task) => ({
+          id: task.id,
+          owner_id: ownerId,
+          text: task.text,
+          score: task.score,
+          wins: task.wins,
+          losses: task.losses,
+          seen: task.seen,
+          done: task.done,
+          done_at: toIso(task.doneAt),
+          created_at: toIso(task.createdAt)
+        }))
+      );
+
+      if (error) {
+        throw error;
+      }
+    }
+
+    if (state.reputation.proofs.length) {
+      const { error } = await supabaseClient.from(TABLES.proofs).insert(
+        state.reputation.proofs.map((proof) => ({
+          id: proof.id,
+          owner_id: ownerId,
+          task_id: findTask(proof.taskId) ? proof.taskId : null,
+          task_text: proof.taskText,
+          evidence: proof.evidence,
+          created_at: toIso(proof.createdAt)
+        }))
+      );
+
+      if (error) {
+        throw error;
+      }
+    }
+
+    const ownSignals = state.reputation.supporters.filter((signal) => signal.profileId === ownerId);
+    if (ownSignals.length) {
+      const { error } = await supabaseClient.from(TABLES.supportSignals).upsert(
+        ownSignals.map((signal) => ({
+          id: signal.id,
+          profile_id: ownerId,
+          supporter_id: session.user.id,
+          supporter_name: signal.name,
+          signal_type: signal.type,
+          note: signal.note,
+          created_at: toIso(signal.createdAt)
+        })),
+        { onConflict: "id" }
+      );
+
+      if (error) {
+        throw error;
+      }
+    }
+  }
+
+  async function pullCloudState() {
+    const ownerId = session.user.id;
+    const [tasksResult, proofsResult, signalsResult] = await Promise.all([
+      supabaseClient
+        .from(TABLES.tasks)
+        .select("id,text,score,wins,losses,seen,done,done_at,created_at")
+        .eq("owner_id", ownerId)
+        .order("created_at", { ascending: true }),
+      supabaseClient
+        .from(TABLES.proofs)
+        .select("id,task_id,task_text,evidence,created_at")
+        .eq("owner_id", ownerId)
+        .order("created_at", { ascending: false }),
+      supabaseClient
+        .from(TABLES.supportSignals)
+        .select("id,profile_id,supporter_name,signal_type,note,created_at")
+        .eq("profile_id", ownerId)
+        .order("created_at", { ascending: false })
+    ]);
+
+    if (tasksResult.error) throw tasksResult.error;
+    if (proofsResult.error) throw proofsResult.error;
+    if (signalsResult.error) throw signalsResult.error;
+
+    state.tasks = tasksResult.data.map((task) => ({
+      id: task.id,
+      text: task.text,
+      score: Number(task.score) || 1000,
+      wins: Number(task.wins) || 0,
+      losses: Number(task.losses) || 0,
+      seen: Number(task.seen) || 0,
+      done: Boolean(task.done),
+      doneAt: task.done_at ? Date.parse(task.done_at) : null,
+      createdAt: task.created_at ? Date.parse(task.created_at) : Date.now()
+    }));
+
+    state.reputation.profileId = ownerId;
+    state.reputation.proofs = proofsResult.data.map((proof) => ({
+      id: proof.id,
+      taskId: proof.task_id || "",
+      taskText: proof.task_text,
+      evidence: proof.evidence,
+      createdAt: proof.created_at ? Date.parse(proof.created_at) : Date.now()
+    }));
+    state.reputation.supporters = signalsResult.data.map((signal) => ({
+      id: signal.id,
+      profileId: signal.profile_id,
+      name: signal.supporter_name,
+      type: signal.signal_type,
+      note: signal.note || "",
+      createdAt: signal.created_at ? Date.parse(signal.created_at) : Date.now()
+    }));
+    state.currentPair = null;
+    lastSyncedInput = state.tasks.map((task) => task.text).join("\n");
+    saveStateLocalOnly();
+  }
+
+  function setSyncStatus(message) {
+    refs.syncStatus.textContent = message;
+    refs.repStatus.textContent = message;
   }
 
   function setView(nextView) {
@@ -260,6 +712,7 @@
     renderFocus();
     renderReputation();
     renderPublic();
+    renderAccount();
   }
 
   function renderInput() {
@@ -390,6 +843,16 @@
     snapshot.items.forEach((item, index) => {
       refs.publicProofList.appendChild(createPublicProofRow(item, index));
     });
+  }
+
+  function renderAccount() {
+    const email = session?.user?.email || "";
+    refs.accountName.textContent = email ? email.split("@")[0] : "Local";
+    refs.authEmail.value = document.activeElement === refs.authEmail ? refs.authEmail.value : refs.authEmail.value;
+    refs.signOutBtn.disabled = !session;
+    refs.syncBtn.disabled = !supabaseClient || !session || cloudBusy;
+    refs.signInBtn.disabled = !supabaseClient || cloudBusy;
+    refs.signUpBtn.disabled = !supabaseClient || cloudBusy;
   }
 
   function createProofRow(task, index) {
@@ -752,7 +1215,7 @@
     pendingSupportDialog = false;
   }
 
-  function saveSupport(event) {
+  async function saveSupport(event) {
     event.preventDefault();
 
     const targetProfileId = activeInviteProfileId || state.reputation.profileId;
@@ -764,6 +1227,32 @@
       note: refs.supportNote.value.trim(),
       createdAt: Date.now()
     };
+
+    if (supabaseClient && session && activeInviteProfileId) {
+      try {
+        const { error } = await supabaseClient.from(TABLES.supportSignals).insert({
+          id: signal.id,
+          profile_id: targetProfileId,
+          supporter_id: session.user.id,
+          supporter_name: signal.name,
+          signal_type: signal.type,
+          note: signal.note,
+          created_at: toIso(signal.createdAt)
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        setSyncStatus("Signal saved");
+        closeSupportDialog();
+        render();
+        return;
+      } catch (error) {
+        console.error(error);
+        setSyncStatus("Signal link copied");
+      }
+    }
 
     if (!activeInviteProfileId || activeInviteProfileId === state.reputation.profileId) {
       addSupportSignal(signal);
@@ -797,6 +1286,16 @@
   }
 
   function showPublicProfile() {
+    if (session) {
+      pendingPublicProfileId = session.user.id;
+      publicSnapshot = publicSnapshotFromState();
+      copyText(profileUrl(session.user.id), "Public copied");
+      loadPublicProfile(session.user.id);
+      activeView = "public";
+      render();
+      return;
+    }
+
     publicSnapshot = publicSnapshotFromState();
     copyText(publicUrl(publicSnapshot), "Public copied");
     activeView = "public";
@@ -889,6 +1388,22 @@
       return;
     }
 
+    if (mode === "profile" && payload.type === "cloud-profile") {
+      pendingPublicProfileId = payload.profileId || null;
+      publicSnapshot = {
+        score: 0,
+        done: 0,
+        proofs: 0,
+        supporters: 0,
+        items: []
+      };
+      activeView = "public";
+      if (pendingPublicProfileId && supabaseClient) {
+        loadPublicProfile(pendingPublicProfileId);
+      }
+      return;
+    }
+
     if (mode === "support" && payload.type === "support-invite") {
       activeInviteProfileId = payload.profileId || null;
       pendingSupportDialog = true;
@@ -898,15 +1413,18 @@
 
     if (mode === "signal" && payload.type === "support-signal" && payload.signal) {
       activeView = "reputation";
-      if (payload.signal.profileId === state.reputation.profileId) {
+      const targetId = session?.user?.id || state.reputation.profileId;
+      if (payload.signal.profileId === targetId) {
         addSupportSignal(payload.signal);
         saveState();
         refs.repStatus.textContent = "Signal imported";
+        history.replaceState(null, "", window.location.href.split("#")[0]);
+      } else if (supabaseClient && !session) {
+        pendingSignal = payload.signal;
+        setSyncStatus("Sign in");
       } else {
         refs.repStatus.textContent = "Wrong profile";
       }
-
-      history.replaceState(null, "", window.location.href.split("#")[0]);
     }
   }
 
@@ -920,6 +1438,81 @@
 
   function publicUrl(snapshot) {
     return `${baseUrl()}#public=${encodePayload(snapshot)}`;
+  }
+
+  function profileUrl(profileId) {
+    return `${baseUrl()}#profile=${encodePayload({
+      type: "cloud-profile",
+      profileId
+    })}`;
+  }
+
+  async function loadPublicProfile(profileId) {
+    if (!supabaseClient || !profileId) {
+      return;
+    }
+
+    try {
+      const [profileResult, proofsResult, signalsResult] = await Promise.all([
+        supabaseClient
+          .from(TABLES.profiles)
+          .select("reputation_score,done_count,proof_count,support_count")
+          .eq("id", profileId)
+          .single(),
+        supabaseClient
+          .from(TABLES.proofs)
+          .select("task_text,evidence,created_at")
+          .eq("owner_id", profileId)
+          .order("created_at", { ascending: false })
+          .limit(8),
+        supabaseClient.from(TABLES.supportSignals).select("id", { count: "exact", head: true }).eq("profile_id", profileId)
+      ]);
+
+      if (profileResult.error) throw profileResult.error;
+      if (proofsResult.error) throw proofsResult.error;
+      if (signalsResult.error) throw signalsResult.error;
+
+      publicSnapshot = {
+        score: Number(profileResult.data.reputation_score) || 0,
+        done: Number(profileResult.data.done_count) || 0,
+        proofs: Number(profileResult.data.proof_count) || proofsResult.data.length,
+        supporters: Number(profileResult.data.support_count) || signalsResult.count || 0,
+        items: proofsResult.data.map((proof) => ({
+          taskText: proof.task_text,
+          evidence: proof.evidence,
+          date: formatDate(Date.parse(proof.created_at))
+        }))
+      };
+      render();
+    } catch (error) {
+      console.error(error);
+      publicSnapshot = {
+        score: 0,
+        done: 0,
+        proofs: 0,
+        supporters: 0,
+        items: [{ taskText: "Connect backend", evidence: "Supabase config required", date: "" }]
+      };
+      render();
+    }
+  }
+
+  async function processPendingSignal() {
+    if (!pendingSignal || !session) {
+      return;
+    }
+
+    if (pendingSignal.profileId !== session.user.id) {
+      setSyncStatus("Wrong profile");
+      pendingSignal = null;
+      return;
+    }
+
+    addSupportSignal(pendingSignal);
+    pendingSignal = null;
+    saveState();
+    await syncNow();
+    history.replaceState(null, "", window.location.href.split("#")[0]);
   }
 
   function signalUrl(signal) {
@@ -1169,6 +1762,14 @@
       month: "short",
       day: "numeric"
     }).format(new Date(value));
+  }
+
+  function toIso(value) {
+    if (!value) {
+      return null;
+    }
+
+    return new Date(value).toISOString();
   }
 
   function remainingMs() {
