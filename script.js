@@ -1,5 +1,6 @@
 (function () {
-  const STORE_KEY = "two-choice-state-v1";
+  const STORE_KEY = "priority-state-v1";
+  const LEGACY_STORE_KEY = "two-choice-state-v1";
   const SPRINT_MS = 60000;
 
   const refs = {
@@ -75,7 +76,8 @@
     const base = freshState();
 
     try {
-      const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+      const raw = localStorage.getItem(STORE_KEY) || localStorage.getItem(LEGACY_STORE_KEY);
+      const saved = JSON.parse(raw || "null");
       if (!saved || !Array.isArray(saved.tasks)) {
         return base;
       }
