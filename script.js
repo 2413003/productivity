@@ -71,10 +71,7 @@
     signInBtn: document.getElementById("signInBtn"),
     signUpBtn: document.getElementById("signUpBtn"),
     signOutBtn: document.getElementById("signOutBtn"),
-    syncBtn: document.getElementById("syncBtn"),
-    supabaseUrl: document.getElementById("supabaseUrl"),
-    supabaseAnonKey: document.getElementById("supabaseAnonKey"),
-    saveBackendBtn: document.getElementById("saveBackendBtn")
+    accountActions: document.getElementById("accountActions")
   };
 
   let state = loadState();
@@ -134,8 +131,6 @@
     refs.authForm.addEventListener("submit", signIn);
     refs.signUpBtn.addEventListener("click", signUp);
     refs.signOutBtn.addEventListener("click", signOut);
-    refs.syncBtn.addEventListener("click", syncNow);
-    refs.saveBackendBtn.addEventListener("click", saveBackendConfigFromForm);
 
     window.addEventListener("storage", () => {
       state = loadState();
@@ -151,7 +146,6 @@
     });
 
     handleHash();
-    populateBackendForm();
     connectBackend();
 
     window.setInterval(tick, 1000);
@@ -281,21 +275,6 @@
     }
   }
 
-  function populateBackendForm() {
-    refs.supabaseUrl.value = backendConfig.url || "";
-    refs.supabaseAnonKey.value = backendConfig.anonKey || "";
-  }
-
-  function saveBackendConfigFromForm() {
-    backendConfig = {
-      url: refs.supabaseUrl.value.trim(),
-      anonKey: refs.supabaseAnonKey.value.trim()
-    };
-    localStorage.setItem(BACKEND_CONFIG_KEY, JSON.stringify(backendConfig));
-    setSyncStatus("Connecting");
-    connectBackend();
-  }
-
   async function connectBackend() {
     if (!backendConfig.url || !backendConfig.anonKey) {
       setSyncStatus("Local");
@@ -343,7 +322,7 @@
     } catch (error) {
       supabaseClient = null;
       session = null;
-      setSyncStatus("Backend error");
+      setSyncStatus("Try again later");
       console.error(error);
       render();
     }
@@ -352,7 +331,7 @@
   async function signIn(event) {
     event.preventDefault();
     if (!supabaseClient) {
-      setSyncStatus("Add backend");
+      setSyncStatus("Try again later");
       return;
     }
 
@@ -377,7 +356,7 @@
 
   async function signUp() {
     if (!supabaseClient) {
-      setSyncStatus("Add backend");
+      setSyncStatus("Try again later");
       return;
     }
 
@@ -388,7 +367,7 @@
       return;
     }
 
-    setSyncStatus("Joining");
+    setSyncStatus("Creating");
     const { data, error } = await supabaseClient.auth.signUp({ email, password });
     if (error) {
       setSyncStatus(error.message);
@@ -670,8 +649,10 @@
   }
 
   function setSyncStatus(message) {
-    refs.syncStatus.textContent = message;
-    refs.repStatus.textContent = message;
+    refs.syncStatus.textContent = accountStatus(message);
+    if (["Signal saved", "Signal link copied", "Signal copied", "Signal added", "Signal imported", "Wrong profile"].includes(message)) {
+      refs.repStatus.textContent = message;
+    }
   }
 
   function setView(nextView) {
@@ -847,10 +828,12 @@
 
   function renderAccount() {
     const email = session?.user?.email || "";
-    refs.accountName.textContent = email ? email.split("@")[0] : "Local";
-    refs.authEmail.value = document.activeElement === refs.authEmail ? refs.authEmail.value : refs.authEmail.value;
-    refs.signOutBtn.disabled = !session;
-    refs.syncBtn.disabled = !supabaseClient || !session || cloudBusy;
+    const signedIn = Boolean(session);
+
+    refs.accountName.textContent = signedIn ? email : "Sign in";
+    refs.authForm.classList.toggle("is-hidden", signedIn);
+    refs.accountActions.classList.toggle("is-hidden", !signedIn);
+    refs.signOutBtn.disabled = !signedIn;
     refs.signInBtn.disabled = !supabaseClient || cloudBusy;
     refs.signUpBtn.disabled = !supabaseClient || cloudBusy;
   }
@@ -1491,7 +1474,7 @@
         done: 0,
         proofs: 0,
         supporters: 0,
-        items: [{ taskText: "Connect backend", evidence: "Supabase config required", date: "" }]
+        items: [{ taskText: "Profile unavailable", evidence: "Try again later", date: "" }]
       };
       render();
     }
@@ -1567,6 +1550,20 @@
     }
 
     refs.repStatus.textContent = status;
+  }
+
+  function accountStatus(message) {
+    const quiet = new Set(["Local", "Ready", "Signed out", "Syncing", "Synced", "Saving", "Saved"]);
+    const replacements = {
+      "Sync error": "Try again later",
+      "Save error": "Try again later"
+    };
+
+    if (quiet.has(message)) {
+      return "";
+    }
+
+    return replacements[message] || message;
   }
 
   function resetRank() {

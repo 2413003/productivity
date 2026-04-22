@@ -165,9 +165,9 @@
             <div class="rep-head">
               <div>
                 <p class="kicker" id="account-title">Account</p>
-                <h1 id="accountName">Local</h1>
+                <h1 id="accountName">Sign in</h1>
               </div>
-              <output id="syncStatus" aria-live="polite">Local</output>
+              <output id="syncStatus" aria-live="polite"></output>
             </div>
 
             <form class="auth-form" id="authForm">
@@ -175,23 +175,13 @@
               <input id="authPassword" type="password" autocomplete="current-password" placeholder="Password">
               <div class="focus-actions">
                 <button class="primary" type="submit" id="signInBtn">Sign in</button>
-                <button class="subtle" type="button" id="signUpBtn">Join</button>
+                <button class="subtle" type="button" id="signUpBtn">Create account</button>
               </div>
             </form>
 
-            <div class="focus-actions">
-              <button class="primary" type="button" id="syncBtn">Sync</button>
+            <div class="focus-actions account-actions" id="accountActions">
               <button class="subtle" type="button" id="signOutBtn">Sign out</button>
             </div>
-
-            <details class="options">
-              <summary>Backend</summary>
-              <div class="auth-form backend-form">
-                <input id="supabaseUrl" type="url" autocomplete="off" placeholder="Supabase URL">
-                <input id="supabaseAnonKey" type="password" autocomplete="off" placeholder="Anon key">
-                <button class="primary" type="button" id="saveBackendBtn">Save</button>
-              </div>
-            </details>
           </div>
         </section>
       </main>

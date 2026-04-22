@@ -326,10 +326,12 @@ summary:focus-visible {
 
 h1,
 #repScore,
-#publicScore {
+#publicScore,
+#accountName {
   margin: 4px 0 0;
   font-size: clamp(2rem, 7vw, 4rem);
   line-height: 1;
+  overflow-wrap: anywhere;
 }
 
 h2 {
@@ -520,8 +522,16 @@ h2 {
   padding: 0 12px;
 }
 
-.backend-form {
-  margin: 0 0 12px;
+.is-hidden {
+  display: none !important;
+}
+
+.account-actions {
+  justify-content: flex-end;
+}
+
+.account-actions button {
+  flex: 0 1 220px;
 }
 
 .proof-list {
