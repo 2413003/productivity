@@ -80,7 +80,7 @@
   let session = null;
   let cloudSaveTimer = null;
   let cloudBusy = false;
-  let activeView = state.tasks.length ? "focus" : "input";
+  let activeView = backendConfigured() ? "account" : state.tasks.length ? "focus" : "input";
   let lastSyncedInput = "";
   let proofTaskId = null;
   let publicSnapshot = null;
@@ -151,7 +151,7 @@
     window.setInterval(tick, 1000);
     render();
 
-    if (pendingSupportDialog) {
+    if (pendingSupportDialog && !signInRequired()) {
       window.setTimeout(() => openSupportDialog(), 120);
     }
   }
@@ -255,6 +255,18 @@
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
   }
 
+  function backendConfigured() {
+    return Boolean(backendConfig?.url && backendConfig?.anonKey);
+  }
+
+  function signInRequired() {
+    return backendConfigured() && !session;
+  }
+
+  function isAccountDataView(view) {
+    return ["input", "choose", "focus", "reputation"].includes(view);
+  }
+
   function loadBackendConfig() {
     try {
       const defaultConfig = window.DO_SUPABASE_CONFIG || {};
@@ -302,7 +314,12 @@
         session = nextSession;
         if (session) {
           await syncNow();
+          if (activeView === "account") {
+            activeView = state.tasks.length ? "focus" : "input";
+          }
         } else {
+          clearLocalAccountData();
+          activeView = "account";
           setSyncStatus("Signed out");
           render();
         }
@@ -311,7 +328,14 @@
       if (session) {
         await syncNow();
         await processPendingSignal();
+        if (pendingSupportDialog) {
+          window.setTimeout(() => openSupportDialog(), 120);
+        }
+        if (activeView === "account") {
+          activeView = state.tasks.length ? "focus" : "input";
+        }
       } else {
+        activeView = "account";
         setSyncStatus("Ready");
         render();
       }
@@ -352,6 +376,11 @@
     session = data.session;
     await syncNow();
     await processPendingSignal();
+    if (pendingSupportDialog) {
+      window.setTimeout(() => openSupportDialog(), 120);
+    }
+    activeView = state.tasks.length ? "focus" : "input";
+    render();
   }
 
   async function signUp() {
@@ -377,6 +406,8 @@
     session = data.session;
     if (session) {
       await syncNow();
+      activeView = state.tasks.length ? "focus" : "input";
+      render();
     } else {
       setSyncStatus("Check email");
       render();
@@ -390,6 +421,8 @@
 
     await supabaseClient.auth.signOut();
     session = null;
+    clearLocalAccountData();
+    activeView = "account";
     setSyncStatus("Signed out");
     render();
   }
@@ -404,52 +437,16 @@
     render();
 
     try {
-      const localSnapshot = captureSyncSnapshot();
       await ensureProfile();
-      await pullCloudState();
-      mergeSyncSnapshot(localSnapshot);
-      await pushCloudState();
       await pullCloudState();
       setSyncStatus("Synced");
     } catch (error) {
       console.error(error);
-      setSyncStatus(error.message || "Sync error");
+      setSyncStatus("Try again later");
     } finally {
       cloudBusy = false;
       render();
     }
-  }
-
-  function captureSyncSnapshot() {
-    return {
-      tasks: state.tasks.map((task) => ({ ...task })),
-      proofs: state.reputation.proofs.map((proof) => ({ ...proof })),
-      supporters: state.reputation.supporters.map((signal) => ({ ...signal })),
-      topCount: state.topCount
-    };
-  }
-
-  function mergeSyncSnapshot(snapshot) {
-    const taskById = new Map(state.tasks.map((task) => [task.id, task]));
-    snapshot.tasks.forEach((task) => {
-      taskById.set(task.id, { ...taskById.get(task.id), ...task });
-    });
-
-    const proofById = new Map(state.reputation.proofs.map((proof) => [proof.id, proof]));
-    snapshot.proofs.forEach((proof) => {
-      proofById.set(proof.id, { ...proofById.get(proof.id), ...proof });
-    });
-
-    const signalById = new Map(state.reputation.supporters.map((signal) => [signal.id, signal]));
-    snapshot.supporters.forEach((signal) => {
-      signalById.set(signal.id, { ...signalById.get(signal.id), ...signal });
-    });
-
-    state.tasks = Array.from(taskById.values());
-    state.reputation.proofs = Array.from(proofById.values());
-    state.reputation.supporters = Array.from(signalById.values());
-    state.topCount = Math.max(state.topCount, snapshot.topCount || 1);
-    saveStateLocalOnly();
   }
 
   function scheduleCloudSave() {
@@ -482,7 +479,6 @@
   async function ensureProfile() {
     const user = session.user;
     state.reputation.profileId = user.id;
-    const stats = reputationStats();
     const displayName = user.email ? user.email.split("@")[0] : "Do user";
 
     const { error } = await supabaseClient
@@ -491,11 +487,7 @@
         {
           id: user.id,
           display_name: displayName,
-          public_profile: true,
-          reputation_score: stats.score,
-          done_count: stats.done,
-          proof_count: stats.proofs,
-          support_count: stats.supporters
+          public_profile: true
         },
         { onConflict: "id" }
       );
@@ -656,6 +648,12 @@
   }
 
   function setView(nextView) {
+    if (signInRequired() && isAccountDataView(nextView)) {
+      activeView = "account";
+      render();
+      return;
+    }
+
     if (activeView === "input" && nextView !== "input" && draftChanged()) {
       applyTasks(nextView);
       return;
@@ -679,12 +677,19 @@
   }
 
   function render() {
+    if (signInRequired() && isAccountDataView(activeView)) {
+      activeView = "account";
+    }
+
     refs.screens.forEach((screen) => {
       const isActive = screen.dataset.screen === activeView;
       screen.classList.toggle("is-active", isActive);
     });
 
     refs.viewButtons.forEach((button) => {
+      const view = button.dataset.viewButton;
+      const hideForAuth = signInRequired() && isAccountDataView(view) && button.closest(".nav");
+      button.classList.toggle("is-hidden", hideForAuth);
       button.setAttribute("aria-current", button.dataset.viewButton === activeView ? "page" : "false");
     });
 
@@ -1606,6 +1611,19 @@
     refs.taskInput.value = "";
     saveState();
     render();
+  }
+
+  function clearLocalAccountData() {
+    state = freshState();
+    publicSnapshot = null;
+    pendingPublicProfileId = null;
+    pendingSignal = null;
+    activeInviteProfileId = null;
+    pendingSupportDialog = false;
+    lastSignalUrl = "";
+    lastSyncedInput = "";
+    refs.taskInput.value = "";
+    localStorage.removeItem(STORE_KEY);
   }
 
   function setTopCount(delta) {
