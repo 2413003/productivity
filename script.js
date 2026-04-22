@@ -362,6 +362,7 @@
           if (activeView === "account") {
             activeView = state.tasks.length ? "focus" : "input";
           }
+          render();
         } else {
           clearLocalAccountData();
           activeView = "account";
@@ -379,6 +380,7 @@
         if (activeView === "account") {
           activeView = state.tasks.length ? "focus" : "input";
         }
+        render();
       } else {
         activeView = "account";
         setSyncStatus("Ready");
@@ -477,17 +479,21 @@
       return;
     }
 
+    const localBeforePull = cloneState(state);
     cloudBusy = true;
     setSyncStatus("Syncing");
     render();
 
     try {
       await ensureProfile();
-      await pullCloudState();
+      const result = await pullCloudState(localBeforePull);
+      if (result.usedLocalFallback) {
+        await pushCloudState();
+      }
       setSyncStatus("Synced");
     } catch (error) {
       console.error(error);
-      setSyncStatus("Try again later");
+      setSyncStatus("Sync error");
     } finally {
       cloudBusy = false;
       render();
@@ -525,25 +531,25 @@
     const user = session.user;
     state.reputation.profileId = user.id;
     const displayName = user.email ? user.email.split("@")[0] : "Do user";
-    const profile = state.reputation.profile;
 
-    const { error } = await supabaseClient
+    const { data, error: readError } = await supabaseClient
       .from(TABLES.profiles)
-      .upsert(
-        {
-          id: user.id,
-          display_name: profile.displayName || displayName,
-          username: profile.username || fallbackUsername(displayName),
-          bio: profile.bio || "",
-          avatar_url: profile.avatarUrl || "",
-          public_profile: profile.profileVisibility === "public",
-          profile_visibility: profile.profileVisibility,
-          proof_visibility: profile.proofVisibility,
-          discoverable: profile.discoverable,
-          allow_friend_requests: profile.allowFriendRequests
-        },
-        { onConflict: "id" }
-      );
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (readError) {
+      throw readError;
+    }
+
+    if (data) {
+      return;
+    }
+
+    const { error } = await supabaseClient.from(TABLES.profiles).insert({
+      id: user.id,
+      display_name: displayName
+    });
 
     if (error) {
       throw error;
@@ -559,7 +565,7 @@
       .from(TABLES.profiles)
       .update({
         display_name: profile.displayName || session.user.email?.split("@")[0] || "Do user",
-        username: profile.username || fallbackUsername(session.user.email || "do"),
+        username: profile.username || null,
         bio: profile.bio || "",
         avatar_url: profile.avatarUrl || "",
         public_profile: profile.profileVisibility === "public",
@@ -577,53 +583,31 @@
       throw profileError;
     }
 
-    const { error: proofDeleteError } = await supabaseClient.from(TABLES.proofs).delete().eq("owner_id", ownerId);
-    if (proofDeleteError) {
-      throw proofDeleteError;
-    }
-
-    const { error: taskDeleteError } = await supabaseClient.from(TABLES.tasks).delete().eq("owner_id", ownerId);
-    if (taskDeleteError) {
-      throw taskDeleteError;
-    }
-
     if (state.tasks.length) {
-      const { error } = await supabaseClient.from(TABLES.tasks).insert(
-        state.tasks.map((task) => ({
-          id: task.id,
-          owner_id: ownerId,
-          text: task.text,
-          score: task.score,
-          wins: task.wins,
-          losses: task.losses,
-          seen: task.seen,
-          done: task.done,
-          done_at: toIso(task.doneAt),
-          created_at: toIso(task.createdAt)
-        }))
+      const { error } = await supabaseClient.from(TABLES.tasks).upsert(
+        state.tasks.map((task) => taskRecord(task, ownerId)),
+        { onConflict: "id" }
       );
 
       if (error) {
         throw error;
       }
     }
+
+    await deleteMissingRows(TABLES.tasks, "owner_id", ownerId, state.tasks.map((task) => task.id));
 
     if (state.reputation.proofs.length) {
-      const { error } = await supabaseClient.from(TABLES.proofs).insert(
-        state.reputation.proofs.map((proof) => ({
-          id: proof.id,
-          owner_id: ownerId,
-          task_id: findTask(proof.taskId) ? proof.taskId : null,
-          task_text: proof.taskText,
-          evidence: proof.evidence,
-          created_at: toIso(proof.createdAt)
-        }))
+      const { error } = await supabaseClient.from(TABLES.proofs).upsert(
+        state.reputation.proofs.map((proof) => proofRecord(proof, ownerId)),
+        { onConflict: "id" }
       );
 
       if (error) {
         throw error;
       }
     }
+
+    await deleteMissingRows(TABLES.proofs, "owner_id", ownerId, state.reputation.proofs.map((proof) => proof.id));
 
     const ownSignals = state.reputation.supporters.filter((signal) => signal.profileId === ownerId);
     if (ownSignals.length) {
@@ -646,7 +630,7 @@
     }
   }
 
-  async function pullCloudState() {
+  async function pullCloudState(localFallback) {
     const ownerId = session.user.id;
     const [profileResult, tasksResult, proofsResult, signalsResult] = await Promise.all([
       supabaseClient
@@ -676,7 +660,7 @@
     if (proofsResult.error) throw proofsResult.error;
     if (signalsResult.error) throw signalsResult.error;
 
-    state.tasks = tasksResult.data.map((task) => ({
+    const cloudTasks = tasksResult.data.map((task) => ({
       id: task.id,
       text: task.text,
       score: Number(task.score) || 1000,
@@ -687,9 +671,7 @@
       doneAt: task.done_at ? Date.parse(task.done_at) : null,
       createdAt: task.created_at ? Date.parse(task.created_at) : Date.now()
     }));
-
-    state.reputation.profileId = ownerId;
-    state.reputation.profile = normalizeProfile({
+    const cloudProfile = normalizeProfile({
       displayName: profileResult.data.display_name || "",
       username: profileResult.data.username || "",
       bio: profileResult.data.bio || "",
@@ -699,14 +681,14 @@
       discoverable: profileResult.data.discoverable !== false,
       allowFriendRequests: profileResult.data.allow_friend_requests !== false
     });
-    state.reputation.proofs = proofsResult.data.map((proof) => ({
+    const cloudProofs = proofsResult.data.map((proof) => ({
       id: proof.id,
       taskId: proof.task_id || "",
       taskText: proof.task_text,
       evidence: proof.evidence,
       createdAt: proof.created_at ? Date.parse(proof.created_at) : Date.now()
     }));
-    state.reputation.supporters = signalsResult.data.map((signal) => ({
+    const cloudSupporters = signalsResult.data.map((signal) => ({
       id: signal.id,
       profileId: signal.profile_id,
       name: signal.supporter_name,
@@ -714,9 +696,111 @@
       note: signal.note || "",
       createdAt: signal.created_at ? Date.parse(signal.created_at) : Date.now()
     }));
+
+    const shouldKeepLocal =
+      !cloudTasks.length && Array.isArray(localFallback?.tasks) && localFallback.tasks.length > 0;
+
+    if (shouldKeepLocal) {
+      state = {
+        ...localFallback,
+        tasks: localFallback.tasks,
+        reputation: {
+          profileId: ownerId,
+          profile: mergeProfiles(localFallback.reputation?.profile, cloudProfile),
+          proofs: localFallback.reputation?.proofs || [],
+          supporters: mergeById(localFallback.reputation?.supporters || [], cloudSupporters)
+        }
+      };
+    } else {
+      state.tasks = cloudTasks;
+      state.reputation.profileId = ownerId;
+      state.reputation.profile = cloudProfile;
+      state.reputation.proofs = cloudProofs;
+      state.reputation.supporters = cloudSupporters;
+    }
+
     state.currentPair = null;
     lastSyncedInput = state.tasks.map((task) => task.text).join("\n");
     saveStateLocalOnly();
+
+    return { usedLocalFallback: shouldKeepLocal };
+  }
+
+  async function deleteMissingRows(table, ownerColumn, ownerId, keepIds) {
+    const keep = new Set(keepIds);
+    const { data, error } = await supabaseClient.from(table).select("id").eq(ownerColumn, ownerId);
+
+    if (error) {
+      throw error;
+    }
+
+    const staleIds = data.map((row) => row.id).filter((id) => !keep.has(id));
+    if (!staleIds.length) {
+      return;
+    }
+
+    const { error: deleteError } = await supabaseClient
+      .from(table)
+      .delete()
+      .eq(ownerColumn, ownerId)
+      .in("id", staleIds);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+  }
+
+  function taskRecord(task, ownerId) {
+    return {
+      id: task.id,
+      owner_id: ownerId,
+      text: task.text,
+      score: task.score,
+      wins: task.wins,
+      losses: task.losses,
+      seen: task.seen,
+      done: task.done,
+      done_at: toIso(task.doneAt),
+      created_at: toIso(task.createdAt)
+    };
+  }
+
+  function proofRecord(proof, ownerId) {
+    return {
+      id: proof.id,
+      owner_id: ownerId,
+      task_id: findTask(proof.taskId) ? proof.taskId : null,
+      task_text: proof.taskText,
+      evidence: proof.evidence,
+      created_at: toIso(proof.createdAt)
+    };
+  }
+
+  function cloneState(source) {
+    return JSON.parse(JSON.stringify(source));
+  }
+
+  function mergeProfiles(localProfile, cloudProfile) {
+    const local = normalizeProfile(localProfile);
+    const cloud = normalizeProfile(cloudProfile);
+
+    return {
+      ...cloud,
+      displayName: local.displayName || cloud.displayName,
+      username: local.username || cloud.username,
+      bio: local.bio || cloud.bio,
+      avatarUrl: local.avatarUrl || cloud.avatarUrl
+    };
+  }
+
+  function mergeById(first, second) {
+    return [...first, ...second].reduce((items, item) => {
+      if (!item?.id || items.some((existing) => existing.id === item.id)) {
+        return items;
+      }
+
+      return [...items, item];
+    }, []);
   }
 
   function setSyncStatus(message) {
@@ -729,11 +813,13 @@
       "Sent",
       "Can't send",
       "Try again later",
+      "Sync error",
+      "Save error",
       "Different account"
     ];
 
     if (profileMessages.includes(message)) {
-      setProfileStatus(message);
+      setProfileStatus(accountStatus(message));
     }
   }
 
@@ -1766,8 +1852,8 @@
   function accountStatus(message) {
     const quiet = new Set(["Local", "Ready", "Signed out", "Syncing", "Synced", "Saving", "Saved"]);
     const replacements = {
-      "Sync error": "Try again later",
-      "Save error": "Try again later"
+      "Sync error": "Couldn't load",
+      "Save error": "Couldn't save"
     };
 
     if (quiet.has(message)) {
