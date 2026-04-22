@@ -38,17 +38,28 @@
     repScore: document.getElementById("repScore"),
     repStatus: document.getElementById("repStatus"),
     doneMetric: document.getElementById("doneMetric"),
-    proofMetric: document.getElementById("proofMetric"),
     supportMetric: document.getElementById("supportMetric"),
     proofCount: document.getElementById("proofCount"),
     proofList: document.getElementById("proofList"),
     supporterList: document.getElementById("supporterList"),
+    profileDisplayName: document.getElementById("profileDisplayName"),
+    profileAvatar: document.getElementById("profileAvatar"),
+    profileHandle: document.getElementById("profileHandle"),
+    profileBio: document.getElementById("profileBio"),
     inviteBtn: document.getElementById("inviteBtn"),
     publicBtn: document.getElementById("publicBtn"),
+    editProfileBtn: document.getElementById("editProfileBtn"),
     addSupportBtn: document.getElementById("addSupportBtn"),
     copySignalBtn: document.getElementById("copySignalBtn"),
+    profileVisibility: document.getElementById("profileVisibility"),
+    proofVisibility: document.getElementById("proofVisibility"),
+    discoverableToggle: document.getElementById("discoverableToggle"),
+    friendRequestsToggle: document.getElementById("friendRequestsToggle"),
     publicScore: document.getElementById("publicScore"),
-    publicDone: document.getElementById("publicDone"),
+    publicDisplayName: document.getElementById("publicDisplayName"),
+    publicAvatar: document.getElementById("publicAvatar"),
+    publicHandle: document.getElementById("publicHandle"),
+    publicBio: document.getElementById("publicBio"),
     publicProof: document.getElementById("publicProof"),
     publicSupport: document.getElementById("publicSupport"),
     publicProofList: document.getElementById("publicProofList"),
@@ -63,6 +74,13 @@
     supportType: document.getElementById("supportType"),
     supportNote: document.getElementById("supportNote"),
     cancelSupportBtn: document.getElementById("cancelSupportBtn"),
+    profileDialog: document.getElementById("profileDialog"),
+    profileForm: document.getElementById("profileForm"),
+    profileNameInput: document.getElementById("profileNameInput"),
+    profileUsernameInput: document.getElementById("profileUsernameInput"),
+    profileAvatarInput: document.getElementById("profileAvatarInput"),
+    profileBioInput: document.getElementById("profileBioInput"),
+    cancelProfileBtn: document.getElementById("cancelProfileBtn"),
     accountName: document.getElementById("accountName"),
     syncStatus: document.getElementById("syncStatus"),
     authForm: document.getElementById("authForm"),
@@ -122,12 +140,19 @@
     refs.clearAll.addEventListener("click", clearAll);
     refs.inviteBtn.addEventListener("click", copyInviteLink);
     refs.publicBtn.addEventListener("click", showPublicProfile);
-    refs.addSupportBtn.addEventListener("click", () => openSupportDialog());
+    refs.editProfileBtn.addEventListener("click", openProfileDialog);
+    refs.addSupportBtn?.addEventListener("click", () => openSupportDialog());
     refs.copySignalBtn.addEventListener("click", copyLatestSignal);
+    refs.profileVisibility.addEventListener("change", savePrivacySettings);
+    refs.proofVisibility.addEventListener("change", savePrivacySettings);
+    refs.discoverableToggle.addEventListener("change", savePrivacySettings);
+    refs.friendRequestsToggle.addEventListener("change", savePrivacySettings);
     refs.proofForm.addEventListener("submit", saveProof);
     refs.skipProofBtn.addEventListener("click", closeProofDialog);
     refs.supportForm.addEventListener("submit", saveSupport);
     refs.cancelSupportBtn.addEventListener("click", closeSupportDialog);
+    refs.profileForm.addEventListener("submit", saveProfile);
+    refs.cancelProfileBtn.addEventListener("click", closeProfileDialog);
     refs.authForm.addEventListener("submit", signIn);
     refs.signUpBtn.addEventListener("click", signUp);
     refs.signOutBtn.addEventListener("click", signOut);
@@ -208,6 +233,7 @@
       pairHistory: [],
       reputation: {
         profileId: makeId(),
+        profile: normalizeProfile(),
         proofs: [],
         supporters: []
       }
@@ -219,6 +245,7 @@
 
     return {
       profileId: typeof source.profileId === "string" ? source.profileId : makeId(),
+      profile: normalizeProfile(source.profile),
       proofs: Array.isArray(source.proofs)
         ? source.proofs
             .filter((proof) => proof && typeof proof.taskText === "string")
@@ -243,6 +270,24 @@
               createdAt: Number(signal.createdAt) || Date.now()
             }))
         : []
+    };
+  }
+
+  function normalizeProfile(profile) {
+    const source = profile && typeof profile === "object" ? profile : {};
+    return {
+      displayName: typeof source.displayName === "string" ? source.displayName.trim() : "",
+      username: normalizeUsername(source.username),
+      bio: typeof source.bio === "string" ? source.bio.trim() : "",
+      avatarUrl: typeof source.avatarUrl === "string" ? source.avatarUrl.trim() : "",
+      profileVisibility: ["public", "friends", "private"].includes(source.profileVisibility)
+        ? source.profileVisibility
+        : "public",
+      proofVisibility: ["public", "friends", "private"].includes(source.proofVisibility)
+        ? source.proofVisibility
+        : "public",
+      discoverable: source.discoverable !== false,
+      allowFriendRequests: source.allowFriendRequests !== false
     };
   }
 
@@ -480,14 +525,22 @@
     const user = session.user;
     state.reputation.profileId = user.id;
     const displayName = user.email ? user.email.split("@")[0] : "Do user";
+    const profile = state.reputation.profile;
 
     const { error } = await supabaseClient
       .from(TABLES.profiles)
       .upsert(
         {
           id: user.id,
-          display_name: displayName,
-          public_profile: true
+          display_name: profile.displayName || displayName,
+          username: profile.username || fallbackUsername(displayName),
+          bio: profile.bio || "",
+          avatar_url: profile.avatarUrl || "",
+          public_profile: profile.profileVisibility === "public",
+          profile_visibility: profile.profileVisibility,
+          proof_visibility: profile.proofVisibility,
+          discoverable: profile.discoverable,
+          allow_friend_requests: profile.allowFriendRequests
         },
         { onConflict: "id" }
       );
@@ -500,10 +553,20 @@
   async function pushCloudState() {
     const ownerId = session.user.id;
     const stats = reputationStats();
+    const profile = state.reputation.profile;
 
     const { error: profileError } = await supabaseClient
       .from(TABLES.profiles)
       .update({
+        display_name: profile.displayName || session.user.email?.split("@")[0] || "Do user",
+        username: profile.username || fallbackUsername(session.user.email || "do"),
+        bio: profile.bio || "",
+        avatar_url: profile.avatarUrl || "",
+        public_profile: profile.profileVisibility === "public",
+        profile_visibility: profile.profileVisibility,
+        proof_visibility: profile.proofVisibility,
+        discoverable: profile.discoverable,
+        allow_friend_requests: profile.allowFriendRequests,
         reputation_score: stats.score,
         done_count: stats.done,
         proof_count: stats.proofs,
@@ -585,7 +648,12 @@
 
   async function pullCloudState() {
     const ownerId = session.user.id;
-    const [tasksResult, proofsResult, signalsResult] = await Promise.all([
+    const [profileResult, tasksResult, proofsResult, signalsResult] = await Promise.all([
+      supabaseClient
+        .from(TABLES.profiles)
+        .select("display_name,username,bio,avatar_url,profile_visibility,proof_visibility,discoverable,allow_friend_requests")
+        .eq("id", ownerId)
+        .single(),
       supabaseClient
         .from(TABLES.tasks)
         .select("id,text,score,wins,losses,seen,done,done_at,created_at")
@@ -603,6 +671,7 @@
         .order("created_at", { ascending: false })
     ]);
 
+    if (profileResult.error) throw profileResult.error;
     if (tasksResult.error) throw tasksResult.error;
     if (proofsResult.error) throw proofsResult.error;
     if (signalsResult.error) throw signalsResult.error;
@@ -620,6 +689,16 @@
     }));
 
     state.reputation.profileId = ownerId;
+    state.reputation.profile = normalizeProfile({
+      displayName: profileResult.data.display_name || "",
+      username: profileResult.data.username || "",
+      bio: profileResult.data.bio || "",
+      avatarUrl: profileResult.data.avatar_url || "",
+      profileVisibility: profileResult.data.profile_visibility || "public",
+      proofVisibility: profileResult.data.proof_visibility || "public",
+      discoverable: profileResult.data.discoverable !== false,
+      allowFriendRequests: profileResult.data.allow_friend_requests !== false
+    });
     state.reputation.proofs = proofsResult.data.map((proof) => ({
       id: proof.id,
       taskId: proof.task_id || "",
@@ -642,8 +721,19 @@
 
   function setSyncStatus(message) {
     refs.syncStatus.textContent = accountStatus(message);
-    if (["Signal saved", "Signal link copied", "Signal copied", "Signal added", "Signal imported", "Wrong profile"].includes(message)) {
-      refs.repStatus.textContent = message;
+    const profileMessages = [
+      "Invite copied",
+      "Invite sent",
+      "Link copied",
+      "Friend added",
+      "Sent",
+      "Can't send",
+      "Try again later",
+      "Different account"
+    ];
+
+    if (profileMessages.includes(message)) {
+      setProfileStatus(message);
     }
   }
 
@@ -772,11 +862,22 @@
 
   function renderReputation() {
     const stats = reputationStats();
+    const profile = state.reputation.profile;
+    const name = profile.displayName || session?.user?.email?.split("@")[0] || "Your profile";
+    const handle = profile.username || fallbackUsername(name);
+
+    refs.profileDisplayName.textContent = name;
+    refs.profileHandle.textContent = `@${handle}`;
+    refs.profileBio.textContent = profile.bio || "";
+    renderAvatar(refs.profileAvatar, name, profile.avatarUrl);
     refs.repScore.textContent = String(stats.score);
     refs.doneMetric.textContent = String(stats.done);
-    refs.proofMetric.textContent = String(stats.proofs);
     refs.supportMetric.textContent = String(stats.supporters);
     refs.proofCount.textContent = String(stats.proofs);
+    refs.profileVisibility.value = profile.profileVisibility;
+    refs.proofVisibility.value = profile.proofVisibility;
+    refs.discoverableToggle.checked = profile.discoverable;
+    refs.friendRequestsToggle.checked = profile.allowFriendRequests;
 
     refs.proofList.innerHTML = "";
     const doneTasks = [...state.tasks]
@@ -812,8 +913,12 @@
 
   function renderPublic() {
     const snapshot = publicSnapshot || publicSnapshotFromState();
+    const name = snapshot.displayName || "Do user";
+    refs.publicDisplayName.textContent = name;
+    refs.publicHandle.textContent = `@${snapshot.username || fallbackUsername(name)}`;
+    refs.publicBio.textContent = snapshot.bio || "";
+    renderAvatar(refs.publicAvatar, name, snapshot.avatarUrl || "");
     refs.publicScore.textContent = String(snapshot.score);
-    refs.publicDone.textContent = String(snapshot.done);
     refs.publicProof.textContent = String(snapshot.proofs);
     refs.publicSupport.textContent = String(snapshot.supporters);
     refs.publicProofList.innerHTML = "";
@@ -891,7 +996,7 @@
 
     const tag = document.createElement("span");
     tag.className = "supporter-tag";
-    tag.textContent = signal.type;
+    tag.textContent = friendActionLabel(signal.type);
 
     main.append(name, meta);
     item.append(main, tag);
@@ -1178,14 +1283,16 @@
       });
     }
 
-    refs.repStatus.textContent = "Proof saved";
+    setProfileStatus("Proof saved");
     closeProofDialog();
     saveState();
     render();
   }
 
   function openSupportDialog() {
-    refs.supportName.value = "";
+    refs.supportName.value = activeInviteProfileId
+      ? state.reputation.profile.displayName || session?.user?.email?.split("@")[0] || ""
+      : "";
     refs.supportType.value = "verify";
     refs.supportNote.value = "";
 
@@ -1201,6 +1308,54 @@
     }
     activeInviteProfileId = null;
     pendingSupportDialog = false;
+  }
+
+  function openProfileDialog() {
+    const profile = state.reputation.profile;
+    refs.profileNameInput.value = profile.displayName || session?.user?.email?.split("@")[0] || "";
+    refs.profileUsernameInput.value = profile.username || "";
+    refs.profileAvatarInput.value = profile.avatarUrl || "";
+    refs.profileBioInput.value = profile.bio || "";
+
+    if (typeof refs.profileDialog.showModal === "function") {
+      refs.profileDialog.showModal();
+      refs.profileNameInput.focus();
+    }
+  }
+
+  function closeProfileDialog() {
+    if (refs.profileDialog.open) {
+      refs.profileDialog.close();
+    }
+  }
+
+  function saveProfile(event) {
+    event.preventDefault();
+
+    state.reputation.profile = {
+      ...state.reputation.profile,
+      displayName: refs.profileNameInput.value.trim(),
+      username: normalizeUsername(refs.profileUsernameInput.value),
+      avatarUrl: refs.profileAvatarInput.value.trim(),
+      bio: refs.profileBioInput.value.trim()
+    };
+
+    closeProfileDialog();
+    saveState();
+    render();
+  }
+
+  function savePrivacySettings() {
+    state.reputation.profile = {
+      ...state.reputation.profile,
+      profileVisibility: refs.profileVisibility.value,
+      proofVisibility: refs.proofVisibility.value,
+      discoverable: refs.discoverableToggle.checked,
+      allowFriendRequests: refs.friendRequestsToggle.checked
+    };
+
+    saveState();
+    render();
   }
 
   async function saveSupport(event) {
@@ -1232,13 +1387,16 @@
           throw error;
         }
 
-        setSyncStatus("Signal saved");
+        setSyncStatus("Sent");
         closeSupportDialog();
         render();
         return;
       } catch (error) {
         console.error(error);
-        setSyncStatus("Signal link copied");
+        setSyncStatus("Can't send");
+        closeSupportDialog();
+        render();
+        return;
       }
     }
 
@@ -1248,7 +1406,7 @@
     }
 
     lastSignalUrl = signalUrl(signal);
-    copyText(lastSignalUrl, "Signal copied");
+    copyText(lastSignalUrl, "Invite copied");
     closeSupportDialog();
     render();
   }
@@ -1266,18 +1424,36 @@
       note: signal.note || "",
       createdAt: Number(signal.createdAt) || Date.now()
     });
-    refs.repStatus.textContent = "Signal added";
+    setProfileStatus("Friend added");
   }
 
-  function copyInviteLink() {
-    copyText(inviteUrl(), "Invite copied");
+  async function copyInviteLink() {
+    const url = inviteUrl();
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Do",
+          text: "Help me stay on track.",
+          url
+        });
+        setSyncStatus("Invite sent");
+        return;
+      } catch (error) {
+        if (error?.name === "AbortError") {
+          return;
+        }
+      }
+    }
+
+    copyText(url, "Invite copied");
   }
 
   function showPublicProfile() {
     if (session) {
       pendingPublicProfileId = session.user.id;
       publicSnapshot = publicSnapshotFromState();
-      copyText(profileUrl(session.user.id), "Public copied");
+      copyText(profileUrl(session.user.id), "Link copied");
       loadPublicProfile(session.user.id);
       activeView = "public";
       render();
@@ -1285,19 +1461,13 @@
     }
 
     publicSnapshot = publicSnapshotFromState();
-    copyText(publicUrl(publicSnapshot), "Public copied");
+    copyText(publicUrl(publicSnapshot), "Link copied");
     activeView = "public";
     render();
   }
 
   function copyLatestSignal() {
-    const latest = [...state.reputation.supporters].sort((a, b) => b.createdAt - a.createdAt)[0];
-    if (!latest && !lastSignalUrl) {
-      refs.repStatus.textContent = "No signal";
-      return;
-    }
-
-    copyText(lastSignalUrl || signalUrl(latest), "Signal copied");
+    copyInviteLink();
   }
 
   function reputationStats() {
@@ -1310,7 +1480,7 @@
       }
 
       if (signal.type === "nudge") {
-        return total - 5;
+        return total + 2;
       }
 
       return total + 6;
@@ -1328,21 +1498,33 @@
 
   function publicSnapshotFromState() {
     const stats = reputationStats();
-    const items = [...state.reputation.proofs]
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, 8)
-      .map((proof) => ({
-        taskText: proof.taskText,
-        evidence: proof.evidence,
-        date: formatDate(proof.createdAt)
-      }));
+    const profile = state.reputation.profile;
+    const profileIsPublic = profile.profileVisibility === "public";
+    const proofIsPublic = profile.proofVisibility === "public";
+    const items =
+      profileIsPublic && proofIsPublic
+        ? [...state.reputation.proofs]
+            .sort((a, b) => b.createdAt - a.createdAt)
+            .slice(0, 8)
+            .map((proof) => ({
+              taskText: proof.taskText,
+              evidence: proof.evidence,
+              date: formatDate(proof.createdAt)
+            }))
+        : [];
 
     return {
       type: "public-profile",
-      score: stats.score,
-      done: stats.done,
-      proofs: stats.proofs,
-      supporters: stats.supporters,
+      displayName: profileIsPublic
+        ? profile.displayName || session?.user?.email?.split("@")[0] || "Do user"
+        : "Private profile",
+      username: profileIsPublic ? profile.username || "" : "",
+      bio: profileIsPublic ? profile.bio || "" : "",
+      avatarUrl: profileIsPublic ? profile.avatarUrl || "" : "",
+      score: profileIsPublic ? stats.score : 0,
+      done: profileIsPublic ? stats.done : 0,
+      proofs: profileIsPublic && proofIsPublic ? stats.proofs : 0,
+      supporters: profileIsPublic ? stats.supporters : 0,
       updatedAt: Date.now(),
       items
     };
@@ -1366,6 +1548,10 @@
 
     if (mode === "public" && payload.type === "public-profile") {
       publicSnapshot = {
+        displayName: typeof payload.displayName === "string" ? payload.displayName : "Do user",
+        username: typeof payload.username === "string" ? payload.username : "",
+        bio: typeof payload.bio === "string" ? payload.bio : "",
+        avatarUrl: typeof payload.avatarUrl === "string" ? payload.avatarUrl : "",
         score: Number(payload.score) || 0,
         done: Number(payload.done) || 0,
         proofs: Number(payload.proofs) || 0,
@@ -1379,6 +1565,10 @@
     if (mode === "profile" && payload.type === "cloud-profile") {
       pendingPublicProfileId = payload.profileId || null;
       publicSnapshot = {
+        displayName: "Profile unavailable",
+        username: "",
+        bio: "",
+        avatarUrl: "",
         score: 0,
         done: 0,
         proofs: 0,
@@ -1405,13 +1595,13 @@
       if (payload.signal.profileId === targetId) {
         addSupportSignal(payload.signal);
         saveState();
-        refs.repStatus.textContent = "Signal imported";
+        setProfileStatus("Friend added");
         history.replaceState(null, "", window.location.href.split("#")[0]);
       } else if (supabaseClient && !session) {
         pendingSignal = payload.signal;
         setSyncStatus("Sign in");
       } else {
-        refs.repStatus.textContent = "Wrong profile";
+        setProfileStatus("Different account");
       }
     }
   }
@@ -1444,7 +1634,7 @@
       const [profileResult, proofsResult, signalsResult] = await Promise.all([
         supabaseClient
           .from(TABLES.profiles)
-          .select("reputation_score,done_count,proof_count,support_count")
+          .select("display_name,username,bio,avatar_url,reputation_score,done_count,proof_count,support_count,profile_visibility,proof_visibility")
           .eq("id", profileId)
           .single(),
         supabaseClient
@@ -1461,9 +1651,15 @@
       if (signalsResult.error) throw signalsResult.error;
 
       publicSnapshot = {
+        displayName: profileResult.data.display_name || "Do user",
+        username: profileResult.data.username || "",
+        bio: profileResult.data.bio || "",
+        avatarUrl: profileResult.data.avatar_url || "",
         score: Number(profileResult.data.reputation_score) || 0,
         done: Number(profileResult.data.done_count) || 0,
-        proofs: Number(profileResult.data.proof_count) || proofsResult.data.length,
+        proofs:
+          proofsResult.data.length ||
+          (profileResult.data.proof_visibility === "public" ? Number(profileResult.data.proof_count) || 0 : 0),
         supporters: Number(profileResult.data.support_count) || signalsResult.count || 0,
         items: proofsResult.data.map((proof) => ({
           taskText: proof.task_text,
@@ -1475,11 +1671,15 @@
     } catch (error) {
       console.error(error);
       publicSnapshot = {
+        displayName: "Private profile",
+        username: "",
+        bio: "",
+        avatarUrl: "",
         score: 0,
         done: 0,
         proofs: 0,
         supporters: 0,
-        items: [{ taskText: "Profile unavailable", evidence: "Try again later", date: "" }]
+        items: []
       };
       render();
     }
@@ -1491,7 +1691,7 @@
     }
 
     if (pendingSignal.profileId !== session.user.id) {
-      setSyncStatus("Wrong profile");
+      setSyncStatus("Different account");
       pendingSignal = null;
       return;
     }
@@ -1554,7 +1754,13 @@
       textarea.remove();
     }
 
-    refs.repStatus.textContent = status;
+    setProfileStatus(status);
+  }
+
+  function setProfileStatus(message) {
+    if (refs.repStatus) {
+      refs.repStatus.textContent = message;
+    }
   }
 
   function accountStatus(message) {
@@ -1766,6 +1972,53 @@
     } catch (error) {
       return false;
     }
+  }
+
+  function normalizeUsername(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    return value
+      .toLowerCase()
+      .replace(/^@/, "")
+      .replace(/[^a-z0-9._-]/g, "")
+      .slice(0, 24);
+  }
+
+  function fallbackUsername(name) {
+    return normalizeUsername(name) || "do";
+  }
+
+  function renderAvatar(node, name, avatarUrl) {
+    node.textContent = initials(name);
+    node.style.backgroundImage = "";
+
+    if (isUrl(avatarUrl)) {
+      node.textContent = "";
+      node.style.backgroundImage = `url("${avatarUrl.replace(/"/g, "%22")}")`;
+    }
+  }
+
+  function initials(name) {
+    const parts = String(name || "Do")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    return (parts[0]?.[0] || "D").toUpperCase();
+  }
+
+  function friendActionLabel(type) {
+    if (type === "verify") {
+      return "Confirmed";
+    }
+
+    if (type === "nudge") {
+      return "Help";
+    }
+
+    return "Cheered";
   }
 
   function formatDate(value) {

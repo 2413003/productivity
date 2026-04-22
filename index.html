@@ -21,7 +21,7 @@
           <button type="button" data-view-button="input">Tasks</button>
           <button type="button" data-view-button="choose">Choose</button>
           <button type="button" data-view-button="focus">Top</button>
-          <button type="button" data-view-button="reputation">Rep</button>
+          <button type="button" data-view-button="reputation">Profile</button>
           <button type="button" data-view-button="account">Me</button>
         </nav>
       </header>
@@ -105,22 +105,27 @@
           <div class="reputation">
             <div class="rep-head">
               <div>
-                <p class="kicker" id="rep-title">Reputation</p>
-                <h1 id="repScore">0</h1>
+                <p class="kicker" id="rep-title">Profile</p>
+                <h1 id="profileDisplayName">Your profile</h1>
               </div>
-              <output id="repStatus" aria-live="polite"></output>
+              <div class="avatar" id="profileAvatar" aria-hidden="true">D</div>
             </div>
 
-            <div class="metric-strip" aria-label="Reputation signals">
+            <p class="profile-handle" id="profileHandle">@do</p>
+            <p class="profile-bio" id="profileBio"></p>
+
+            <div class="metric-strip" aria-label="Profile stats">
+              <span><strong id="repScore">0</strong><small>Score</small></span>
               <span><strong id="doneMetric">0</strong><small>Done</small></span>
-              <span><strong id="proofMetric">0</strong><small>Proof</small></span>
-              <span><strong id="supportMetric">0</strong><small>Circle</small></span>
+              <span><strong id="supportMetric">0</strong><small>Friends</small></span>
             </div>
 
             <div class="focus-actions">
-              <button class="primary" type="button" id="inviteBtn">Invite</button>
-              <button class="subtle" type="button" id="publicBtn">Public</button>
+              <button class="primary" type="button" id="inviteBtn">Invite friends</button>
+              <button class="subtle" type="button" id="editProfileBtn">Edit profile</button>
+              <button class="subtle" type="button" id="publicBtn">View as public</button>
             </div>
+            <output class="profile-status" id="repStatus" aria-live="polite"></output>
 
             <div class="proof-block">
               <div class="section-head">
@@ -131,12 +136,41 @@
             </div>
 
             <details class="options">
-              <summary>Circle</summary>
+              <summary>Friends</summary>
               <div class="option-actions">
-                <button type="button" id="addSupportBtn">Add signal</button>
-                <button type="button" id="copySignalBtn">Copy latest</button>
+                <button type="button" id="copySignalBtn">Copy invite</button>
               </div>
               <ul class="supporter-list" id="supporterList"></ul>
+            </details>
+
+            <details class="options">
+              <summary>Privacy</summary>
+              <div class="privacy-list">
+                <label>
+                  <span>Profile</span>
+                  <select id="profileVisibility">
+                    <option value="public">Public</option>
+                    <option value="friends">Friends</option>
+                    <option value="private">Only me</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Proof</span>
+                  <select id="proofVisibility">
+                    <option value="public">Public</option>
+                    <option value="friends">Friends</option>
+                    <option value="private">Only me</option>
+                  </select>
+                </label>
+                <label class="toggle-row">
+                  <span>Let friends find me</span>
+                  <input id="discoverableToggle" type="checkbox">
+                </label>
+                <label class="toggle-row">
+                  <span>Allow friend requests</span>
+                  <input id="friendRequestsToggle" type="checkbox">
+                </label>
+              </div>
             </details>
           </div>
         </section>
@@ -146,14 +180,17 @@
             <div class="rep-head">
               <div>
                 <p class="kicker">Public</p>
-                <h1 id="publicScore">0</h1>
+                <h1 id="publicDisplayName">Profile</h1>
               </div>
+              <div class="avatar" id="publicAvatar" aria-hidden="true">D</div>
               <button class="subtle" type="button" data-view-button="reputation">Mine</button>
             </div>
-            <div class="metric-strip" aria-label="Public signals">
-              <span><strong id="publicDone">0</strong><small>Done</small></span>
+            <p class="profile-handle" id="publicHandle">@do</p>
+            <p class="profile-bio" id="publicBio"></p>
+            <div class="metric-strip" aria-label="Public profile stats">
+              <span><strong id="publicScore">0</strong><small>Score</small></span>
               <span><strong id="publicProof">0</strong><small>Proof</small></span>
-              <span><strong id="publicSupport">0</strong><small>Circle</small></span>
+              <span><strong id="publicSupport">0</strong><small>Friends</small></span>
             </div>
             <h2 id="public-title">Proof</h2>
             <ul class="proof-list" id="publicProofList"></ul>
@@ -201,16 +238,30 @@
 
     <dialog class="modal" id="supportDialog">
       <form method="dialog" id="supportForm">
-        <p class="kicker">Signal</p>
-        <input id="supportName" type="text" autocomplete="name" placeholder="Name">
-        <select id="supportType" aria-label="Signal type">
-          <option value="verify">Verified</option>
-          <option value="kudos">Kudos</option>
-          <option value="nudge">Nudge</option>
+        <p class="kicker">Friend</p>
+        <input id="supportName" type="text" autocomplete="name" placeholder="Your name">
+        <select id="supportType" aria-label="Friend action">
+          <option value="kudos">Cheer them on</option>
+          <option value="verify">Confirm progress</option>
+          <option value="nudge">Offer help</option>
         </select>
-        <input id="supportNote" type="text" autocomplete="off" placeholder="Note">
+        <input id="supportNote" type="text" autocomplete="off" placeholder="Message">
         <div class="dialog-actions">
           <button class="subtle" type="button" id="cancelSupportBtn">Cancel</button>
+          <button class="primary" type="submit">Send</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="profileDialog">
+      <form method="dialog" id="profileForm">
+        <p class="kicker">Edit profile</p>
+        <input id="profileNameInput" type="text" autocomplete="name" placeholder="Display name">
+        <input id="profileUsernameInput" type="text" autocomplete="off" placeholder="Username">
+        <input id="profileAvatarInput" type="url" autocomplete="off" placeholder="Photo URL">
+        <input id="profileBioInput" type="text" autocomplete="off" placeholder="Bio">
+        <div class="dialog-actions">
+          <button class="subtle" type="button" id="cancelProfileBtn">Cancel</button>
           <button class="primary" type="submit">Save</button>
         </div>
       </form>

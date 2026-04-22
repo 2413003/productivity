@@ -6,7 +6,14 @@
 create table if not exists public.do_task_bracket_v1_profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   display_name text,
+  username text,
+  bio text,
+  avatar_url text,
   public_profile boolean not null default true,
+  profile_visibility text not null default 'public' check (profile_visibility in ('public', 'friends', 'private')),
+  proof_visibility text not null default 'public' check (proof_visibility in ('public', 'friends', 'private')),
+  discoverable boolean not null default true,
+  allow_friend_requests boolean not null default true,
   reputation_score integer not null default 0,
   done_count integer not null default 0,
   proof_count integer not null default 0,
@@ -14,6 +21,23 @@ create table if not exists public.do_task_bracket_v1_profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.do_task_bracket_v1_profiles
+  add column if not exists display_name text,
+  add column if not exists username text,
+  add column if not exists bio text,
+  add column if not exists avatar_url text,
+  add column if not exists public_profile boolean not null default true,
+  add column if not exists profile_visibility text not null default 'public',
+  add column if not exists proof_visibility text not null default 'public',
+  add column if not exists discoverable boolean not null default true,
+  add column if not exists allow_friend_requests boolean not null default true,
+  add column if not exists reputation_score integer not null default 0,
+  add column if not exists done_count integer not null default 0,
+  add column if not exists proof_count integer not null default 0,
+  add column if not exists support_count integer not null default 0,
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists updated_at timestamptz not null default now();
 
 create table if not exists public.do_task_bracket_v1_tasks (
   id text primary key,
@@ -60,6 +84,16 @@ create index if not exists do_task_bracket_v1_proofs_owner_created_idx
 create index if not exists do_task_bracket_v1_support_profile_created_idx
   on public.do_task_bracket_v1_support_signals (profile_id, created_at desc);
 
+create index if not exists do_task_bracket_v1_support_supporter_idx
+  on public.do_task_bracket_v1_support_signals (supporter_id, profile_id);
+
+create index if not exists do_task_bracket_v1_profiles_public_idx
+  on public.do_task_bracket_v1_profiles (public_profile, discoverable);
+
+create unique index if not exists do_task_bracket_v1_profiles_username_idx
+  on public.do_task_bracket_v1_profiles (lower(username))
+  where username is not null and username <> '';
+
 create or replace function public.do_task_bracket_v1_set_updated_at()
 returns trigger
 language plpgsql
@@ -93,7 +127,7 @@ begin
   select count(*), coalesce(sum(
     case signal_type
       when 'verify' then 16
-      when 'nudge' then -5
+      when 'nudge' then 2
       else 6
     end
   ), 0)
@@ -126,6 +160,75 @@ begin
 
   return coalesce(new, old);
 end;
+$$;
+
+create or replace function public.do_task_bracket_v1_can_view_profile(target_profile_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.do_task_bracket_v1_profiles profile
+    where profile.id = target_profile_id
+      and (
+        profile.id = (select auth.uid())
+        or (profile.public_profile = true and profile.profile_visibility = 'public')
+        or (
+          profile.profile_visibility = 'friends'
+          and exists (
+            select 1
+            from public.do_task_bracket_v1_support_signals support
+            where support.profile_id = profile.id
+              and support.supporter_id = (select auth.uid())
+          )
+        )
+      )
+  );
+$$;
+
+create or replace function public.do_task_bracket_v1_can_view_proof(target_profile_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.do_task_bracket_v1_profiles profile
+    where profile.id = target_profile_id
+      and (
+        profile.id = (select auth.uid())
+        or (profile.public_profile = true and profile.proof_visibility = 'public')
+        or (
+          profile.proof_visibility = 'friends'
+          and exists (
+            select 1
+            from public.do_task_bracket_v1_support_signals support
+            where support.profile_id = profile.id
+              and support.supporter_id = (select auth.uid())
+          )
+        )
+      )
+  );
+$$;
+
+create or replace function public.do_task_bracket_v1_allows_friend_request(target_profile_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.do_task_bracket_v1_profiles profile
+    where profile.id = target_profile_id
+      and profile.allow_friend_requests = true
+  );
 $$;
 
 drop trigger if exists do_task_bracket_v1_profiles_updated_at on public.do_task_bracket_v1_profiles;
@@ -161,86 +264,82 @@ alter table public.do_task_bracket_v1_support_signals enable row level security;
 drop policy if exists "do_task_bracket_v1_profiles_read_own_or_public" on public.do_task_bracket_v1_profiles;
 create policy "do_task_bracket_v1_profiles_read_own_or_public"
 on public.do_task_bracket_v1_profiles for select
-using (id = auth.uid() or public_profile = true);
+using ((select public.do_task_bracket_v1_can_view_profile(id)));
 
 drop policy if exists "do_task_bracket_v1_profiles_insert_own" on public.do_task_bracket_v1_profiles;
 create policy "do_task_bracket_v1_profiles_insert_own"
 on public.do_task_bracket_v1_profiles for insert
-with check (id = auth.uid());
+with check (id = (select auth.uid()));
 
 drop policy if exists "do_task_bracket_v1_profiles_update_own" on public.do_task_bracket_v1_profiles;
 create policy "do_task_bracket_v1_profiles_update_own"
 on public.do_task_bracket_v1_profiles for update
-using (id = auth.uid())
-with check (id = auth.uid());
+using (id = (select auth.uid()))
+with check (id = (select auth.uid()));
 
 drop policy if exists "do_task_bracket_v1_tasks_read_own" on public.do_task_bracket_v1_tasks;
 create policy "do_task_bracket_v1_tasks_read_own"
 on public.do_task_bracket_v1_tasks for select
-using (owner_id = auth.uid());
+using (owner_id = (select auth.uid()));
 
 drop policy if exists "do_task_bracket_v1_tasks_insert_own" on public.do_task_bracket_v1_tasks;
 create policy "do_task_bracket_v1_tasks_insert_own"
 on public.do_task_bracket_v1_tasks for insert
-with check (owner_id = auth.uid());
+with check (owner_id = (select auth.uid()));
 
 drop policy if exists "do_task_bracket_v1_tasks_update_own" on public.do_task_bracket_v1_tasks;
 create policy "do_task_bracket_v1_tasks_update_own"
 on public.do_task_bracket_v1_tasks for update
-using (owner_id = auth.uid())
-with check (owner_id = auth.uid());
+using (owner_id = (select auth.uid()))
+with check (owner_id = (select auth.uid()));
 
 drop policy if exists "do_task_bracket_v1_tasks_delete_own" on public.do_task_bracket_v1_tasks;
 create policy "do_task_bracket_v1_tasks_delete_own"
 on public.do_task_bracket_v1_tasks for delete
-using (owner_id = auth.uid());
+using (owner_id = (select auth.uid()));
 
 drop policy if exists "do_task_bracket_v1_proofs_read_own_or_public" on public.do_task_bracket_v1_proofs;
 create policy "do_task_bracket_v1_proofs_read_own_or_public"
 on public.do_task_bracket_v1_proofs for select
 using (
-  owner_id = auth.uid()
-  or exists (
-    select 1 from public.do_task_bracket_v1_profiles
-    where do_task_bracket_v1_profiles.id = do_task_bracket_v1_proofs.owner_id
-      and do_task_bracket_v1_profiles.public_profile = true
-  )
+  owner_id = (select auth.uid())
+  or (select public.do_task_bracket_v1_can_view_proof(owner_id))
 );
 
 drop policy if exists "do_task_bracket_v1_proofs_insert_own" on public.do_task_bracket_v1_proofs;
 create policy "do_task_bracket_v1_proofs_insert_own"
 on public.do_task_bracket_v1_proofs for insert
-with check (owner_id = auth.uid());
+with check (owner_id = (select auth.uid()));
 
 drop policy if exists "do_task_bracket_v1_proofs_update_own" on public.do_task_bracket_v1_proofs;
 create policy "do_task_bracket_v1_proofs_update_own"
 on public.do_task_bracket_v1_proofs for update
-using (owner_id = auth.uid())
-with check (owner_id = auth.uid());
+using (owner_id = (select auth.uid()))
+with check (owner_id = (select auth.uid()));
 
 drop policy if exists "do_task_bracket_v1_proofs_delete_own" on public.do_task_bracket_v1_proofs;
 create policy "do_task_bracket_v1_proofs_delete_own"
 on public.do_task_bracket_v1_proofs for delete
-using (owner_id = auth.uid());
+using (owner_id = (select auth.uid()));
 
 drop policy if exists "do_task_bracket_v1_signals_read_profile_or_public" on public.do_task_bracket_v1_support_signals;
 create policy "do_task_bracket_v1_signals_read_profile_or_public"
 on public.do_task_bracket_v1_support_signals for select
 using (
-  profile_id = auth.uid()
-  or exists (
-    select 1 from public.do_task_bracket_v1_profiles
-    where do_task_bracket_v1_profiles.id = do_task_bracket_v1_support_signals.profile_id
-      and do_task_bracket_v1_profiles.public_profile = true
-  )
+  profile_id = (select auth.uid())
+  or supporter_id = (select auth.uid())
+  or (select public.do_task_bracket_v1_can_view_profile(profile_id))
 );
 
 drop policy if exists "do_task_bracket_v1_signals_insert_signed_in" on public.do_task_bracket_v1_support_signals;
 create policy "do_task_bracket_v1_signals_insert_signed_in"
 on public.do_task_bracket_v1_support_signals for insert
-with check (supporter_id = auth.uid());
+with check (
+  supporter_id = (select auth.uid())
+  and (select public.do_task_bracket_v1_allows_friend_request(profile_id))
+);
 
 drop policy if exists "do_task_bracket_v1_signals_delete_own_support" on public.do_task_bracket_v1_support_signals;
 create policy "do_task_bracket_v1_signals_delete_own_support"
 on public.do_task_bracket_v1_support_signals for delete
-using (supporter_id = auth.uid() or profile_id = auth.uid());
+using (supporter_id = (select auth.uid()) or profile_id = (select auth.uid()));

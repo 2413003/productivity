@@ -187,6 +187,12 @@ summary:focus-visible {
   font-weight: 700;
 }
 
+.profile-status {
+  display: block;
+  min-height: 20px;
+  margin-top: 10px;
+}
+
 #taskInput {
   width: 100%;
   min-height: min(50svh, 440px);
@@ -337,6 +343,36 @@ h1,
 h2 {
   margin: 22px 0 10px;
   font-size: 0.9rem;
+}
+
+.avatar {
+  width: clamp(58px, 10vw, 84px);
+  height: clamp(58px, 10vw, 84px);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: clamp(1.4rem, 4vw, 2.1rem);
+  font-weight: 800;
+  background-position: center;
+  background-size: cover;
+}
+
+.profile-handle,
+.profile-bio {
+  margin: -16px 0 18px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  font-weight: 650;
+}
+
+.profile-bio {
+  max-width: 52ch;
+  margin-top: -8px;
+  line-height: 1.45;
 }
 
 .stepper {
@@ -520,6 +556,39 @@ h2 {
   background: var(--panel);
   color: var(--ink);
   padding: 0 12px;
+}
+
+.privacy-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.privacy-list label {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 220px);
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.privacy-list select {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 0 10px;
+}
+
+.toggle-row input {
+  justify-self: end;
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
 }
 
 .is-hidden {
@@ -706,5 +775,14 @@ h2 {
   .supporter-tag {
     justify-self: start;
     text-align: left;
+  }
+
+  .privacy-list label {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px 0;
+  }
+
+  .toggle-row input {
+    justify-self: start;
   }
 }
