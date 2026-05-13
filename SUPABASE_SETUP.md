@@ -16,6 +16,7 @@ window.DO_SUPABASE_CONFIG = {
 
 Notes:
 - The anon key is designed to be public in browser apps. Row-level security in `supabase.schema.sql` protects user data.
+- Add your app URL to Supabase Auth redirect URLs so password reset emails can return to the app.
 - All database objects are namespaced with `do_task_bracket_v1_` so they do not collide with existing Supabase tables, functions, triggers, indexes, or policies.
 - If you ran an earlier draft of this schema, it may have created `do_*` tables. The app no longer uses those names. Leave them alone unless you have checked they contain no data you need.
 - Tasks are private to the signed-in user.

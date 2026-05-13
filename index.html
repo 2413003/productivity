@@ -214,6 +214,15 @@
                 <button class="primary" type="submit" id="signInBtn">Sign in</button>
                 <button class="subtle" type="button" id="signUpBtn">Create account</button>
               </div>
+              <button class="text-action" type="button" id="forgotPasswordBtn">Forgot password</button>
+            </form>
+
+            <form class="auth-form is-hidden" id="recoveryForm">
+              <input id="recoveryPassword" type="password" autocomplete="new-password" placeholder="New password">
+              <input id="recoveryConfirm" type="password" autocomplete="new-password" placeholder="Repeat password">
+              <div class="focus-actions">
+                <button class="primary" type="submit" id="savePasswordBtn">Save password</button>
+              </div>
             </form>
 
             <div class="focus-actions account-actions is-hidden" id="accountActions">
@@ -232,6 +241,22 @@
         <div class="dialog-actions">
           <button class="subtle" value="skip" type="button" id="skipProofBtn">Skip</button>
           <button class="primary" value="save" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="whyDialog">
+      <form method="dialog" id="whyForm">
+        <p class="kicker">Why</p>
+        <h2 id="whyTask">Task</h2>
+        <textarea
+          id="whyInput"
+          autocomplete="off"
+          placeholder="Why now? Why does it matter? What bigger aim does it serve?"
+        ></textarea>
+        <div class="dialog-actions">
+          <button class="subtle" type="button" id="cancelWhyBtn">Cancel</button>
+          <button class="primary" type="submit">Save</button>
         </div>
       </form>
     </dialog>

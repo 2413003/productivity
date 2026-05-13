@@ -68,6 +68,11 @@
     proofTask: document.getElementById("proofTask"),
     proofEvidence: document.getElementById("proofEvidence"),
     skipProofBtn: document.getElementById("skipProofBtn"),
+    whyDialog: document.getElementById("whyDialog"),
+    whyForm: document.getElementById("whyForm"),
+    whyTask: document.getElementById("whyTask"),
+    whyInput: document.getElementById("whyInput"),
+    cancelWhyBtn: document.getElementById("cancelWhyBtn"),
     supportDialog: document.getElementById("supportDialog"),
     supportForm: document.getElementById("supportForm"),
     supportName: document.getElementById("supportName"),
@@ -88,6 +93,11 @@
     authPassword: document.getElementById("authPassword"),
     signInBtn: document.getElementById("signInBtn"),
     signUpBtn: document.getElementById("signUpBtn"),
+    forgotPasswordBtn: document.getElementById("forgotPasswordBtn"),
+    recoveryForm: document.getElementById("recoveryForm"),
+    recoveryPassword: document.getElementById("recoveryPassword"),
+    recoveryConfirm: document.getElementById("recoveryConfirm"),
+    savePasswordBtn: document.getElementById("savePasswordBtn"),
     signOutBtn: document.getElementById("signOutBtn"),
     accountActions: document.getElementById("accountActions")
   };
@@ -100,7 +110,9 @@
   let cloudBusy = false;
   let activeView = backendConfigured() ? "account" : state.tasks.length ? "focus" : "input";
   let lastSyncedInput = "";
+  let recoveryMode = hasRecoveryLink();
   let proofTaskId = null;
+  let whyTaskId = null;
   let publicSnapshot = null;
   let pendingPublicProfileId = null;
   let pendingSignal = null;
@@ -149,12 +161,16 @@
     refs.friendRequestsToggle.addEventListener("change", savePrivacySettings);
     refs.proofForm.addEventListener("submit", saveProof);
     refs.skipProofBtn.addEventListener("click", closeProofDialog);
+    refs.whyForm.addEventListener("submit", saveWhy);
+    refs.cancelWhyBtn.addEventListener("click", closeWhyDialog);
     refs.supportForm.addEventListener("submit", saveSupport);
     refs.cancelSupportBtn.addEventListener("click", closeSupportDialog);
     refs.profileForm.addEventListener("submit", saveProfile);
     refs.cancelProfileBtn.addEventListener("click", closeProfileDialog);
     refs.authForm.addEventListener("submit", signIn);
     refs.signUpBtn.addEventListener("click", signUp);
+    refs.forgotPasswordBtn.addEventListener("click", requestPasswordReset);
+    refs.recoveryForm.addEventListener("submit", saveNewPassword);
     refs.signOutBtn.addEventListener("click", signOut);
 
     window.addEventListener("storage", () => {
@@ -202,6 +218,7 @@
           .map((task) => ({
             id: task.id || makeId(),
             text: task.text.trim(),
+            justification: typeof task.justification === "string" ? task.justification.trim() : "",
             score: Number.isFinite(task.score) ? task.score : 1000,
             wins: Number(task.wins) || 0,
             losses: Number(task.losses) || 0,
@@ -305,7 +322,7 @@
   }
 
   function signInRequired() {
-    return backendConfigured() && !session;
+    return backendConfigured() && (!session || recoveryMode);
   }
 
   function isAccountDataView(view) {
@@ -355,15 +372,24 @@
       }
 
       session = data.session;
-      supabaseClient.auth.onAuthStateChange(async (_event, nextSession) => {
+      supabaseClient.auth.onAuthStateChange(async (event, nextSession) => {
         session = nextSession;
+        if (event === "PASSWORD_RECOVERY") {
+          recoveryMode = true;
+          activeView = "account";
+          setSyncStatus("Reset password");
+          render();
+          return;
+        }
+
         if (session) {
           await syncNow();
-          if (activeView === "account") {
+          if (!recoveryMode && activeView === "account") {
             activeView = state.tasks.length ? "focus" : "input";
           }
           render();
         } else {
+          recoveryMode = false;
           clearLocalAccountData();
           activeView = "account";
           setSyncStatus("Signed out");
@@ -372,15 +398,21 @@
       });
 
       if (session) {
-        await syncNow();
-        await processPendingSignal();
-        if (pendingSupportDialog) {
-          window.setTimeout(() => openSupportDialog(), 120);
+        if (recoveryMode) {
+          activeView = "account";
+          setSyncStatus("Reset password");
+          render();
+        } else {
+          await syncNow();
+          await processPendingSignal();
+          if (pendingSupportDialog) {
+            window.setTimeout(() => openSupportDialog(), 120);
+          }
+          if (activeView === "account") {
+            activeView = state.tasks.length ? "focus" : "input";
+          }
+          render();
         }
-        if (activeView === "account") {
-          activeView = state.tasks.length ? "focus" : "input";
-        }
-        render();
       } else {
         activeView = "account";
         setSyncStatus("Ready");
@@ -421,6 +453,8 @@
     }
 
     session = data.session;
+    recoveryMode = false;
+    clearRecoveryUrl();
     await syncNow();
     await processPendingSignal();
     if (pendingSupportDialog) {
@@ -452,6 +486,8 @@
 
     session = data.session;
     if (session) {
+      recoveryMode = false;
+      clearRecoveryUrl();
       await syncNow();
       activeView = state.tasks.length ? "focus" : "input";
       render();
@@ -461,12 +497,83 @@
     }
   }
 
+  async function requestPasswordReset() {
+    if (!supabaseClient) {
+      setSyncStatus("Try again later");
+      return;
+    }
+
+    const email = refs.authEmail.value.trim();
+    if (!email) {
+      setSyncStatus("Enter email");
+      refs.authEmail.focus();
+      return;
+    }
+
+    const redirectTo = passwordResetRedirectUrl();
+    if (!redirectTo) {
+      setSyncStatus("Open from a browser link");
+      return;
+    }
+
+    setSyncStatus("Sending");
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) {
+      setSyncStatus(error.message);
+      return;
+    }
+
+    setSyncStatus("Check email");
+    render();
+  }
+
+  async function saveNewPassword(event) {
+    event.preventDefault();
+    if (!supabaseClient || !session) {
+      setSyncStatus("Try again later");
+      return;
+    }
+
+    const password = refs.recoveryPassword.value;
+    const confirm = refs.recoveryConfirm.value;
+
+    if (!password) {
+      setSyncStatus("Enter password");
+      refs.recoveryPassword.focus();
+      return;
+    }
+
+    if (password !== confirm) {
+      setSyncStatus("Passwords don't match");
+      refs.recoveryConfirm.focus();
+      return;
+    }
+
+    setSyncStatus("Saving");
+    const { error } = await supabaseClient.auth.updateUser({ password });
+    if (error) {
+      setSyncStatus(error.message);
+      return;
+    }
+
+    recoveryMode = false;
+    refs.recoveryForm.reset();
+    clearRecoveryUrl();
+    await syncNow();
+    activeView = state.tasks.length ? "focus" : "input";
+    setSyncStatus("Password updated");
+    render();
+  }
+
   async function signOut() {
     if (!supabaseClient) {
       return;
     }
 
     await supabaseClient.auth.signOut();
+    recoveryMode = false;
+    refs.recoveryForm.reset();
+    clearRecoveryUrl();
     session = null;
     clearLocalAccountData();
     activeView = "account";
@@ -640,7 +747,7 @@
         .single(),
       supabaseClient
         .from(TABLES.tasks)
-        .select("id,text,score,wins,losses,seen,done,done_at,created_at")
+        .select("id,text,justification,score,wins,losses,seen,done,done_at,created_at")
         .eq("owner_id", ownerId)
         .order("created_at", { ascending: true }),
       supabaseClient
@@ -663,6 +770,7 @@
     const cloudTasks = tasksResult.data.map((task) => ({
       id: task.id,
       text: task.text,
+      justification: task.justification || "",
       score: Number(task.score) || 1000,
       wins: Number(task.wins) || 0,
       losses: Number(task.losses) || 0,
@@ -755,6 +863,7 @@
       id: task.id,
       owner_id: ownerId,
       text: task.text,
+      justification: task.justification || "",
       score: task.score,
       wins: task.wins,
       losses: task.losses,
@@ -801,6 +910,10 @@
 
       return [...items, item];
     }, []);
+  }
+
+  function hasJustification(task) {
+    return Boolean(task?.justification && task.justification.trim());
   }
 
   function setSyncStatus(message) {
@@ -1026,12 +1139,15 @@
     const email = session?.user?.email || "";
     const signedIn = Boolean(session);
 
-    refs.accountName.textContent = signedIn ? email : "Sign in";
-    refs.authForm.classList.toggle("is-hidden", signedIn);
-    refs.accountActions.classList.toggle("is-hidden", !signedIn);
+    refs.accountName.textContent = recoveryMode ? "New password" : signedIn ? email : "Sign in";
+    refs.authForm.classList.toggle("is-hidden", signedIn || recoveryMode);
+    refs.recoveryForm.classList.toggle("is-hidden", !recoveryMode);
+    refs.accountActions.classList.toggle("is-hidden", !signedIn || recoveryMode);
     refs.signOutBtn.disabled = !signedIn;
     refs.signInBtn.disabled = !supabaseClient || cloudBusy;
     refs.signUpBtn.disabled = !supabaseClient || cloudBusy;
+    refs.forgotPasswordBtn.disabled = !supabaseClient || cloudBusy;
+    refs.savePasswordBtn.disabled = !supabaseClient || cloudBusy;
   }
 
   function createProofRow(task, index) {
@@ -1123,6 +1239,16 @@
     textNode.className = "task-text";
     textNode.textContent = task.text;
 
+    const actions = document.createElement("span");
+    actions.className = "task-actions";
+
+    const whyButton = document.createElement("button");
+    whyButton.className = `row-meta${hasJustification(task) ? " is-set" : ""}`;
+    whyButton.type = "button";
+    whyButton.dataset.action = "why";
+    whyButton.dataset.id = task.id;
+    whyButton.textContent = "Why";
+
     const button = document.createElement("button");
     button.className = "row-action";
     button.type = "button";
@@ -1130,7 +1256,8 @@
     button.dataset.id = task.id;
     button.textContent = action === "restore" ? "Undo" : "Done";
 
-    item.append(rankNode, textNode, button);
+    actions.append(whyButton, button);
+    item.append(rankNode, textNode, actions);
     return item;
   }
 
@@ -1170,6 +1297,7 @@
       return {
         id: makeId(),
         text,
+        justification: "",
         score: 1000,
         wins: 0,
         losses: 0,
@@ -1289,6 +1417,11 @@
       return;
     }
 
+    if (button.dataset.action === "why") {
+      openWhyDialog(task);
+      return;
+    }
+
     if (button.dataset.action === "done") {
       task.done = true;
       task.doneAt = Date.now();
@@ -1345,6 +1478,24 @@
     }
   }
 
+  function openWhyDialog(task) {
+    whyTaskId = task.id;
+    refs.whyTask.textContent = task.text;
+    refs.whyInput.value = task.justification || "";
+
+    if (typeof refs.whyDialog.showModal === "function") {
+      refs.whyDialog.showModal();
+      refs.whyInput.focus();
+    }
+  }
+
+  function closeWhyDialog() {
+    whyTaskId = null;
+    if (refs.whyDialog.open) {
+      refs.whyDialog.close();
+    }
+  }
+
   function saveProof(event) {
     event.preventDefault();
 
@@ -1371,6 +1522,21 @@
 
     setProfileStatus("Proof saved");
     closeProofDialog();
+    saveState();
+    render();
+  }
+
+  function saveWhy(event) {
+    event.preventDefault();
+
+    const task = findTask(whyTaskId);
+    if (!task) {
+      closeWhyDialog();
+      return;
+    }
+
+    task.justification = refs.whyInput.value.trim();
+    closeWhyDialog();
     saveState();
     render();
   }
@@ -1800,6 +1966,35 @@
     return window.location.href.split("#")[0];
   }
 
+  function passwordResetRedirectUrl() {
+    try {
+      const url = new URL(baseUrl());
+      if (!["http:", "https:"].includes(url.protocol)) {
+        return "";
+      }
+
+      return url.toString();
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function hasRecoveryLink() {
+    const search = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    return search.get("type") === "recovery" || hash.get("type") === "recovery";
+  }
+
+  function clearRecoveryUrl() {
+    if (!window.location.hash) {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    url.hash = "";
+    history.replaceState(null, "", url.toString());
+  }
+
   function encodePayload(payload) {
     const json = JSON.stringify(payload);
     const binary = encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (_, hex) =>
@@ -1914,6 +2109,7 @@
     pendingSupportDialog = false;
     lastSignalUrl = "";
     lastSyncedInput = "";
+    refs.recoveryForm.reset();
     refs.taskInput.value = "";
     localStorage.removeItem(STORE_KEY);
   }

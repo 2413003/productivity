@@ -43,6 +43,7 @@ create table if not exists public.do_task_bracket_v1_tasks (
   id text primary key,
   owner_id uuid not null references auth.users (id) on delete cascade,
   text text not null,
+  justification text,
   score double precision not null default 1000,
   wins integer not null default 0,
   losses integer not null default 0,
@@ -52,6 +53,9 @@ create table if not exists public.do_task_bracket_v1_tasks (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.do_task_bracket_v1_tasks
+  add column if not exists justification text;
 
 create table if not exists public.do_task_bracket_v1_proofs (
   id text primary key,

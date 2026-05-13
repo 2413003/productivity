@@ -449,6 +449,31 @@ h2 {
   font-weight: 700;
 }
 
+.task-actions {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+  gap: 8px;
+}
+
+.row-meta {
+  min-width: 54px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--muted);
+  padding: 0 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.row-meta.is-set {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .empty {
   display: grid;
   place-items: center;
@@ -556,6 +581,17 @@ h2 {
   background: var(--panel);
   color: var(--ink);
   padding: 0 12px;
+}
+
+.text-action {
+  justify-self: start;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
 }
 
 .privacy-list {
@@ -695,7 +731,8 @@ h2 {
 }
 
 .modal input,
-.modal select {
+.modal select,
+.modal textarea {
   width: 100%;
   min-height: 44px;
   border: 1px solid var(--line);
@@ -703,6 +740,13 @@ h2 {
   background: #fff;
   color: var(--ink);
   padding: 0 12px;
+}
+
+.modal textarea {
+  min-height: 140px;
+  padding: 12px;
+  resize: vertical;
+  line-height: 1.55;
 }
 
 .dialog-actions {
@@ -762,6 +806,12 @@ h2 {
 
   .task-row {
     grid-template-columns: 30px minmax(0, 1fr) auto;
+  }
+
+  .task-actions {
+    grid-column: 2 / -1;
+    justify-self: start;
+    margin-top: 4px;
   }
 
   .proof-row,
