@@ -594,6 +594,15 @@ h2 {
   font-weight: 700;
 }
 
+.account-note {
+  display: block;
+  min-height: 20px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
 .privacy-list {
   display: grid;
   gap: 10px;

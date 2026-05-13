@@ -88,6 +88,7 @@
     cancelProfileBtn: document.getElementById("cancelProfileBtn"),
     accountName: document.getElementById("accountName"),
     syncStatus: document.getElementById("syncStatus"),
+    accountNote: document.getElementById("accountNote"),
     authForm: document.getElementById("authForm"),
     authEmail: document.getElementById("authEmail"),
     authPassword: document.getElementById("authPassword"),
@@ -511,13 +512,11 @@
     }
 
     const redirectTo = passwordResetRedirectUrl();
-    if (!redirectTo) {
-      setSyncStatus("Open from a browser link");
-      return;
-    }
-
     setSyncStatus("Sending");
-    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(
+      email,
+      redirectTo ? { redirectTo } : undefined
+    );
     if (error) {
       setSyncStatus(error.message);
       return;
@@ -917,7 +916,9 @@
   }
 
   function setSyncStatus(message) {
-    refs.syncStatus.textContent = accountStatus(message);
+    const accountMessage = accountStatus(message);
+    refs.syncStatus.textContent = accountMessage;
+    refs.accountNote.textContent = accountMessage;
     const profileMessages = [
       "Invite copied",
       "Invite sent",
