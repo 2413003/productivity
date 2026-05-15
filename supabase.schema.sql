@@ -14,6 +14,13 @@ create table if not exists public.do_task_bracket_v1_profiles (
   proof_visibility text not null default 'public' check (proof_visibility in ('public', 'friends', 'private')),
   discoverable boolean not null default true,
   allow_friend_requests boolean not null default true,
+  rank_mode text not null default 'manual' check (rank_mode in ('manual', 'power')),
+  power_north_star text,
+  power_definition text,
+  power_assets text,
+  power_constraints text,
+  power_avoid text,
+  power_horizon text not null default '2y' check (power_horizon in ('6m', '2y', '5y')),
   reputation_score integer not null default 0,
   done_count integer not null default 0,
   proof_count integer not null default 0,
@@ -32,6 +39,13 @@ alter table public.do_task_bracket_v1_profiles
   add column if not exists proof_visibility text not null default 'public',
   add column if not exists discoverable boolean not null default true,
   add column if not exists allow_friend_requests boolean not null default true,
+  add column if not exists rank_mode text not null default 'manual',
+  add column if not exists power_north_star text,
+  add column if not exists power_definition text,
+  add column if not exists power_assets text,
+  add column if not exists power_constraints text,
+  add column if not exists power_avoid text,
+  add column if not exists power_horizon text not null default '2y',
   add column if not exists reputation_score integer not null default 0,
   add column if not exists done_count integer not null default 0,
   add column if not exists proof_count integer not null default 0,
@@ -44,6 +58,9 @@ create table if not exists public.do_task_bracket_v1_tasks (
   owner_id uuid not null references auth.users (id) on delete cascade,
   text text not null,
   justification text,
+  power_time integer not null default 3 check (power_time in (1, 3, 5)),
+  power_money integer not null default 3 check (power_money in (1, 3, 5)),
+  power_effort integer not null default 3 check (power_effort in (1, 3, 5)),
   score double precision not null default 1000,
   wins integer not null default 0,
   losses integer not null default 0,
@@ -55,7 +72,10 @@ create table if not exists public.do_task_bracket_v1_tasks (
 );
 
 alter table public.do_task_bracket_v1_tasks
-  add column if not exists justification text;
+  add column if not exists justification text,
+  add column if not exists power_time integer not null default 3,
+  add column if not exists power_money integer not null default 3,
+  add column if not exists power_effort integer not null default 3;
 
 create table if not exists public.do_task_bracket_v1_proofs (
   id text primary key,

@@ -33,10 +33,17 @@
               <p class="kicker" id="tasks-title">Tasks</p>
               <output id="draftCount" aria-live="polite">0</output>
             </div>
-            <textarea id="taskInput" spellcheck="true" placeholder="One task per line"></textarea>
-            <div class="action-row">
-              <button class="primary" type="button" id="startBtn">Start</button>
+            <div class="compose-controls">
+              <div class="mode-toggle" aria-label="Ranking mode">
+                <button type="button" id="manualModeBtn">You</button>
+                <button type="button" id="powerModeBtn">Power</button>
+              </div>
+              <div class="compose-actions">
+                <button class="subtle is-hidden" type="button" id="powerContextBtn">Context</button>
+                <button class="primary" type="button" id="startBtn">Start</button>
+              </div>
             </div>
+            <textarea id="taskInput" spellcheck="true" placeholder="One task per line"></textarea>
           </div>
         </section>
 
@@ -256,8 +263,76 @@
           autocomplete="off"
           placeholder="Why now? Why does it matter? What bigger aim does it serve?"
         ></textarea>
+        <div class="power-fields" id="whyPowerFields">
+          <p class="kicker">Power Inputs</p>
+          <div class="power-grid">
+            <label>
+              <span>Time</span>
+              <select id="whyTime">
+                <option value="1">Low</option>
+                <option value="3">Medium</option>
+                <option value="5">High</option>
+              </select>
+            </label>
+            <label>
+              <span>Money</span>
+              <select id="whyMoney">
+                <option value="1">Low</option>
+                <option value="3">Medium</option>
+                <option value="5">High</option>
+              </select>
+            </label>
+            <label>
+              <span>Effort</span>
+              <select id="whyEffort">
+                <option value="1">Low</option>
+                <option value="3">Medium</option>
+                <option value="5">High</option>
+              </select>
+            </label>
+          </div>
+          <output class="power-read" id="whyPowerRead"></output>
+        </div>
         <div class="dialog-actions">
           <button class="subtle" type="button" id="cancelWhyBtn">Cancel</button>
+          <button class="primary" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="powerDialog">
+      <form method="dialog" id="powerForm">
+        <p class="kicker">Power</p>
+        <label class="modal-field">
+          <span>Direction</span>
+          <input id="powerNorthStar" type="text" autocomplete="off" placeholder="What are you building toward?">
+        </label>
+        <label class="modal-field">
+          <span>Power</span>
+          <input id="powerDefinition" type="text" autocomplete="off" placeholder="What gives you more power long-term?">
+        </label>
+        <label class="modal-field">
+          <span>Assets</span>
+          <textarea id="powerAssets" autocomplete="off" placeholder="Skills, capital, audience, relationships, systems"></textarea>
+        </label>
+        <label class="modal-field">
+          <span>Constraints</span>
+          <textarea id="powerConstraints" autocomplete="off" placeholder="Time, money, energy, obligations"></textarea>
+        </label>
+        <label class="modal-field">
+          <span>Avoid</span>
+          <textarea id="powerAvoid" autocomplete="off" placeholder="What drains leverage or creates weak dependence?"></textarea>
+        </label>
+        <label class="modal-field">
+          <span>Horizon</span>
+          <select id="powerHorizon">
+            <option value="6m">6 months</option>
+            <option value="2y">2 years</option>
+            <option value="5y">5 years</option>
+          </select>
+        </label>
+        <div class="dialog-actions">
+          <button class="subtle" type="button" id="cancelPowerBtn">Cancel</button>
           <button class="primary" type="submit">Save</button>
         </div>
       </form>

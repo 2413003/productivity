@@ -16,6 +16,9 @@
     viewButtons: Array.from(document.querySelectorAll("[data-view-button]")),
     taskInput: document.getElementById("taskInput"),
     draftCount: document.getElementById("draftCount"),
+    manualModeBtn: document.getElementById("manualModeBtn"),
+    powerModeBtn: document.getElementById("powerModeBtn"),
+    powerContextBtn: document.getElementById("powerContextBtn"),
     startBtn: document.getElementById("startBtn"),
     timeLeft: document.getElementById("timeLeft"),
     tapCount: document.getElementById("tapCount"),
@@ -72,7 +75,21 @@
     whyForm: document.getElementById("whyForm"),
     whyTask: document.getElementById("whyTask"),
     whyInput: document.getElementById("whyInput"),
+    whyTime: document.getElementById("whyTime"),
+    whyMoney: document.getElementById("whyMoney"),
+    whyEffort: document.getElementById("whyEffort"),
+    whyPowerFields: document.getElementById("whyPowerFields"),
+    whyPowerRead: document.getElementById("whyPowerRead"),
     cancelWhyBtn: document.getElementById("cancelWhyBtn"),
+    powerDialog: document.getElementById("powerDialog"),
+    powerForm: document.getElementById("powerForm"),
+    powerNorthStar: document.getElementById("powerNorthStar"),
+    powerDefinition: document.getElementById("powerDefinition"),
+    powerAssets: document.getElementById("powerAssets"),
+    powerConstraints: document.getElementById("powerConstraints"),
+    powerAvoid: document.getElementById("powerAvoid"),
+    powerHorizon: document.getElementById("powerHorizon"),
+    cancelPowerBtn: document.getElementById("cancelPowerBtn"),
     supportDialog: document.getElementById("supportDialog"),
     supportForm: document.getElementById("supportForm"),
     supportName: document.getElementById("supportName"),
@@ -120,6 +137,10 @@
   let activeInviteProfileId = null;
   let pendingSupportDialog = false;
   let lastSignalUrl = "";
+  let cloudSchema = {
+    profilePower: null,
+    taskPower: null
+  };
 
   init();
 
@@ -130,6 +151,9 @@
 
     refs.taskInput.addEventListener("input", updateDraftCount);
     refs.startBtn.addEventListener("click", () => applyTasks("choose"));
+    refs.manualModeBtn.addEventListener("click", () => setRankMode("manual"));
+    refs.powerModeBtn.addEventListener("click", () => setRankMode("power"));
+    refs.powerContextBtn.addEventListener("click", openPowerDialog);
 
     refs.choiceA.addEventListener("click", () => chooseCurrent(0));
     refs.choiceB.addEventListener("click", () => chooseCurrent(1));
@@ -140,6 +164,11 @@
     refs.lessTop.addEventListener("click", () => setTopCount(-1));
     refs.moreTop.addEventListener("click", () => setTopCount(1));
     refs.keepChoosing.addEventListener("click", () => {
+      if (currentRankMode() === "power") {
+        openPowerDialog();
+        return;
+      }
+
       startSprint();
       setView("choose");
     });
@@ -163,7 +192,12 @@
     refs.proofForm.addEventListener("submit", saveProof);
     refs.skipProofBtn.addEventListener("click", closeProofDialog);
     refs.whyForm.addEventListener("submit", saveWhy);
+    refs.whyTime.addEventListener("change", updateWhyPowerRead);
+    refs.whyMoney.addEventListener("change", updateWhyPowerRead);
+    refs.whyEffort.addEventListener("change", updateWhyPowerRead);
     refs.cancelWhyBtn.addEventListener("click", closeWhyDialog);
+    refs.powerForm.addEventListener("submit", savePowerProfile);
+    refs.cancelPowerBtn.addEventListener("click", closePowerDialog);
     refs.supportForm.addEventListener("submit", saveSupport);
     refs.cancelSupportBtn.addEventListener("click", closeSupportDialog);
     refs.profileForm.addEventListener("submit", saveProfile);
@@ -220,6 +254,9 @@
             id: task.id || makeId(),
             text: task.text.trim(),
             justification: typeof task.justification === "string" ? task.justification.trim() : "",
+            powerTime: normalizePowerLevel(task.powerTime),
+            powerMoney: normalizePowerLevel(task.powerMoney),
+            powerEffort: normalizePowerLevel(task.powerEffort),
             score: Number.isFinite(task.score) ? task.score : 1000,
             wins: Number(task.wins) || 0,
             losses: Number(task.losses) || 0,
@@ -305,7 +342,14 @@
         ? source.proofVisibility
         : "public",
       discoverable: source.discoverable !== false,
-      allowFriendRequests: source.allowFriendRequests !== false
+      allowFriendRequests: source.allowFriendRequests !== false,
+      rankMode: normalizeRankMode(source.rankMode),
+      powerNorthStar: typeof source.powerNorthStar === "string" ? source.powerNorthStar.trim() : "",
+      powerDefinition: typeof source.powerDefinition === "string" ? source.powerDefinition.trim() : "",
+      powerAssets: typeof source.powerAssets === "string" ? source.powerAssets.trim() : "",
+      powerConstraints: typeof source.powerConstraints === "string" ? source.powerConstraints.trim() : "",
+      powerAvoid: typeof source.powerAvoid === "string" ? source.powerAvoid.trim() : "",
+      powerHorizon: normalizePowerHorizon(source.powerHorizon)
     };
   }
 
@@ -662,42 +706,135 @@
     }
   }
 
+  async function updateCloudProfile(ownerId, payload) {
+    const legacyPayload = {
+      display_name: payload.display_name,
+      username: payload.username,
+      bio: payload.bio,
+      avatar_url: payload.avatar_url,
+      public_profile: payload.public_profile,
+      profile_visibility: payload.profile_visibility,
+      proof_visibility: payload.proof_visibility,
+      discoverable: payload.discoverable,
+      allow_friend_requests: payload.allow_friend_requests,
+      reputation_score: payload.reputation_score,
+      done_count: payload.done_count,
+      proof_count: payload.proof_count,
+      support_count: payload.support_count
+    };
+
+    const targetPayload = cloudSchema.profilePower === false ? legacyPayload : payload;
+    let { error } = await supabaseClient.from(TABLES.profiles).update(targetPayload).eq("id", ownerId);
+
+    if (error && isMissingColumnError(error) && cloudSchema.profilePower !== false) {
+      cloudSchema.profilePower = false;
+      ({ error } = await supabaseClient.from(TABLES.profiles).update(legacyPayload).eq("id", ownerId));
+    } else if (!error) {
+      cloudSchema.profilePower = targetPayload === payload;
+    }
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  async function upsertCloudTasks(taskRecords, legacyTaskRecords) {
+    const targetRecords = cloudSchema.taskPower === false ? legacyTaskRecords : taskRecords;
+    let { error } = await supabaseClient.from(TABLES.tasks).upsert(targetRecords, { onConflict: "id" });
+
+    if (error && isMissingColumnError(error) && cloudSchema.taskPower !== false) {
+      cloudSchema.taskPower = false;
+      ({ error } = await supabaseClient.from(TABLES.tasks).upsert(legacyTaskRecords, { onConflict: "id" }));
+    } else if (!error) {
+      cloudSchema.taskPower = targetRecords === taskRecords;
+    }
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  async function fetchCloudProfile(ownerId) {
+    const powerSelect =
+      "display_name,username,bio,avatar_url,profile_visibility,proof_visibility,discoverable,allow_friend_requests,rank_mode,power_north_star,power_definition,power_assets,power_constraints,power_avoid,power_horizon";
+    const legacySelect =
+      "display_name,username,bio,avatar_url,profile_visibility,proof_visibility,discoverable,allow_friend_requests";
+    const select = cloudSchema.profilePower === false ? legacySelect : powerSelect;
+    let result = await supabaseClient.from(TABLES.profiles).select(select).eq("id", ownerId).single();
+
+    if (result.error && isMissingColumnError(result.error) && cloudSchema.profilePower !== false) {
+      cloudSchema.profilePower = false;
+      result = await supabaseClient.from(TABLES.profiles).select(legacySelect).eq("id", ownerId).single();
+    } else if (!result.error) {
+      cloudSchema.profilePower = select === powerSelect;
+    }
+
+    return {
+      ...result,
+      powerFields: cloudSchema.profilePower !== false
+    };
+  }
+
+  async function fetchCloudTasks(ownerId) {
+    const powerSelect = "id,text,justification,power_time,power_money,power_effort,score,wins,losses,seen,done,done_at,created_at";
+    const legacySelect = "id,text,justification,score,wins,losses,seen,done,done_at,created_at";
+    const select = cloudSchema.taskPower === false ? legacySelect : powerSelect;
+    let result = await supabaseClient
+      .from(TABLES.tasks)
+      .select(select)
+      .eq("owner_id", ownerId)
+      .order("created_at", { ascending: true });
+
+    if (result.error && isMissingColumnError(result.error) && cloudSchema.taskPower !== false) {
+      cloudSchema.taskPower = false;
+      result = await supabaseClient
+        .from(TABLES.tasks)
+        .select(legacySelect)
+        .eq("owner_id", ownerId)
+        .order("created_at", { ascending: true });
+    } else if (!result.error) {
+      cloudSchema.taskPower = select === powerSelect;
+    }
+
+    return {
+      ...result,
+      powerFields: cloudSchema.taskPower !== false
+    };
+  }
+
   async function pushCloudState() {
     const ownerId = session.user.id;
     const stats = reputationStats();
     const profile = state.reputation.profile;
 
-    const { error: profileError } = await supabaseClient
-      .from(TABLES.profiles)
-      .update({
-        display_name: profile.displayName || session.user.email?.split("@")[0] || "Do user",
-        username: profile.username || null,
-        bio: profile.bio || "",
-        avatar_url: profile.avatarUrl || "",
-        public_profile: profile.profileVisibility === "public",
-        profile_visibility: profile.profileVisibility,
-        proof_visibility: profile.proofVisibility,
-        discoverable: profile.discoverable,
-        allow_friend_requests: profile.allowFriendRequests,
-        reputation_score: stats.score,
-        done_count: stats.done,
-        proof_count: stats.proofs,
-        support_count: stats.supporters
-      })
-      .eq("id", ownerId);
-    if (profileError) {
-      throw profileError;
-    }
+    await updateCloudProfile(ownerId, {
+      display_name: profile.displayName || session.user.email?.split("@")[0] || "Do user",
+      username: profile.username || null,
+      bio: profile.bio || "",
+      avatar_url: profile.avatarUrl || "",
+      public_profile: profile.profileVisibility === "public",
+      profile_visibility: profile.profileVisibility,
+      proof_visibility: profile.proofVisibility,
+      discoverable: profile.discoverable,
+      allow_friend_requests: profile.allowFriendRequests,
+      reputation_score: stats.score,
+      done_count: stats.done,
+      proof_count: stats.proofs,
+      support_count: stats.supporters,
+      rank_mode: currentRankMode(),
+      power_north_star: profile.powerNorthStar || "",
+      power_definition: profile.powerDefinition || "",
+      power_assets: profile.powerAssets || "",
+      power_constraints: profile.powerConstraints || "",
+      power_avoid: profile.powerAvoid || "",
+      power_horizon: profile.powerHorizon || "2y"
+    });
 
     if (state.tasks.length) {
-      const { error } = await supabaseClient.from(TABLES.tasks).upsert(
+      await upsertCloudTasks(
         state.tasks.map((task) => taskRecord(task, ownerId)),
-        { onConflict: "id" }
+        state.tasks.map((task) => legacyTaskRecord(task, ownerId))
       );
-
-      if (error) {
-        throw error;
-      }
     }
 
     await deleteMissingRows(TABLES.tasks, "owner_id", ownerId, state.tasks.map((task) => task.id));
@@ -739,16 +876,8 @@
   async function pullCloudState(localFallback) {
     const ownerId = session.user.id;
     const [profileResult, tasksResult, proofsResult, signalsResult] = await Promise.all([
-      supabaseClient
-        .from(TABLES.profiles)
-        .select("display_name,username,bio,avatar_url,profile_visibility,proof_visibility,discoverable,allow_friend_requests")
-        .eq("id", ownerId)
-        .single(),
-      supabaseClient
-        .from(TABLES.tasks)
-        .select("id,text,justification,score,wins,losses,seen,done,done_at,created_at")
-        .eq("owner_id", ownerId)
-        .order("created_at", { ascending: true }),
+      fetchCloudProfile(ownerId),
+      fetchCloudTasks(ownerId),
       supabaseClient
         .from(TABLES.proofs)
         .select("id,task_id,task_text,evidence,created_at")
@@ -766,18 +895,31 @@
     if (proofsResult.error) throw proofsResult.error;
     if (signalsResult.error) throw signalsResult.error;
 
-    const cloudTasks = tasksResult.data.map((task) => ({
-      id: task.id,
-      text: task.text,
-      justification: task.justification || "",
-      score: Number(task.score) || 1000,
-      wins: Number(task.wins) || 0,
-      losses: Number(task.losses) || 0,
-      seen: Number(task.seen) || 0,
-      done: Boolean(task.done),
-      doneAt: task.done_at ? Date.parse(task.done_at) : null,
-      createdAt: task.created_at ? Date.parse(task.created_at) : Date.now()
-    }));
+    const localTaskMap = new Map((localFallback?.tasks || []).map((task) => [task.id, task]));
+    const cloudTasks = tasksResult.data.map((task) => {
+      const localTask = localTaskMap.get(task.id);
+      return {
+        id: task.id,
+        text: task.text,
+        justification: task.justification || "",
+        powerTime: tasksResult.powerFields
+          ? normalizePowerLevel(task.power_time)
+          : normalizePowerLevel(localTask?.powerTime),
+        powerMoney: tasksResult.powerFields
+          ? normalizePowerLevel(task.power_money)
+          : normalizePowerLevel(localTask?.powerMoney),
+        powerEffort: tasksResult.powerFields
+          ? normalizePowerLevel(task.power_effort)
+          : normalizePowerLevel(localTask?.powerEffort),
+        score: Number(task.score) || 1000,
+        wins: Number(task.wins) || 0,
+        losses: Number(task.losses) || 0,
+        seen: Number(task.seen) || 0,
+        done: Boolean(task.done),
+        doneAt: task.done_at ? Date.parse(task.done_at) : null,
+        createdAt: task.created_at ? Date.parse(task.created_at) : Date.now()
+      };
+    });
     const cloudProfile = normalizeProfile({
       displayName: profileResult.data.display_name || "",
       username: profileResult.data.username || "",
@@ -786,7 +928,26 @@
       profileVisibility: profileResult.data.profile_visibility || "public",
       proofVisibility: profileResult.data.proof_visibility || "public",
       discoverable: profileResult.data.discoverable !== false,
-      allowFriendRequests: profileResult.data.allow_friend_requests !== false
+      allowFriendRequests: profileResult.data.allow_friend_requests !== false,
+      rankMode: profileResult.powerFields ? profileResult.data.rank_mode : localFallback?.reputation?.profile?.rankMode,
+      powerNorthStar: profileResult.powerFields
+        ? profileResult.data.power_north_star || ""
+        : localFallback?.reputation?.profile?.powerNorthStar || "",
+      powerDefinition: profileResult.powerFields
+        ? profileResult.data.power_definition || ""
+        : localFallback?.reputation?.profile?.powerDefinition || "",
+      powerAssets: profileResult.powerFields
+        ? profileResult.data.power_assets || ""
+        : localFallback?.reputation?.profile?.powerAssets || "",
+      powerConstraints: profileResult.powerFields
+        ? profileResult.data.power_constraints || ""
+        : localFallback?.reputation?.profile?.powerConstraints || "",
+      powerAvoid: profileResult.powerFields
+        ? profileResult.data.power_avoid || ""
+        : localFallback?.reputation?.profile?.powerAvoid || "",
+      powerHorizon: profileResult.powerFields
+        ? profileResult.data.power_horizon || "2y"
+        : localFallback?.reputation?.profile?.powerHorizon || "2y"
     });
     const cloudProofs = proofsResult.data.map((proof) => ({
       id: proof.id,
@@ -821,7 +982,7 @@
     } else {
       state.tasks = cloudTasks;
       state.reputation.profileId = ownerId;
-      state.reputation.profile = cloudProfile;
+      state.reputation.profile = mergeProfiles(localFallback?.reputation?.profile, cloudProfile);
       state.reputation.proofs = cloudProofs;
       state.reputation.supporters = cloudSupporters;
     }
@@ -863,6 +1024,25 @@
       owner_id: ownerId,
       text: task.text,
       justification: task.justification || "",
+      power_time: normalizePowerLevel(task.powerTime),
+      power_money: normalizePowerLevel(task.powerMoney),
+      power_effort: normalizePowerLevel(task.powerEffort),
+      score: task.score,
+      wins: task.wins,
+      losses: task.losses,
+      seen: task.seen,
+      done: task.done,
+      done_at: toIso(task.doneAt),
+      created_at: toIso(task.createdAt)
+    };
+  }
+
+  function legacyTaskRecord(task, ownerId) {
+    return {
+      id: task.id,
+      owner_id: ownerId,
+      text: task.text,
+      justification: task.justification || "",
       score: task.score,
       wins: task.wins,
       losses: task.losses,
@@ -897,7 +1077,14 @@
       displayName: local.displayName || cloud.displayName,
       username: local.username || cloud.username,
       bio: local.bio || cloud.bio,
-      avatarUrl: local.avatarUrl || cloud.avatarUrl
+      avatarUrl: local.avatarUrl || cloud.avatarUrl,
+      rankMode: cloud.rankMode,
+      powerNorthStar: cloud.powerNorthStar || local.powerNorthStar,
+      powerDefinition: cloud.powerDefinition || local.powerDefinition,
+      powerAssets: cloud.powerAssets || local.powerAssets,
+      powerConstraints: cloud.powerConstraints || local.powerConstraints,
+      powerAvoid: cloud.powerAvoid || local.powerAvoid,
+      powerHorizon: cloud.powerHorizon || local.powerHorizon
     };
   }
 
@@ -913,6 +1100,39 @@
 
   function hasJustification(task) {
     return Boolean(task?.justification && task.justification.trim());
+  }
+
+  function hasTaskContext(task) {
+    return (
+      hasJustification(task) ||
+      normalizePowerLevel(task?.powerTime) !== 3 ||
+      normalizePowerLevel(task?.powerMoney) !== 3 ||
+      normalizePowerLevel(task?.powerEffort) !== 3
+    );
+  }
+
+  function currentRankMode() {
+    return normalizeRankMode(state.reputation.profile?.rankMode);
+  }
+
+  function setRankMode(mode) {
+    const nextMode = normalizeRankMode(mode);
+    if (currentRankMode() === nextMode) {
+      render();
+      return;
+    }
+
+    state.reputation.profile = {
+      ...state.reputation.profile,
+      rankMode: nextMode
+    };
+
+    if (nextMode === "power" && activeView === "choose") {
+      activeView = "focus";
+    }
+
+    saveState();
+    render();
   }
 
   function setSyncStatus(message) {
@@ -949,6 +1169,12 @@
       return;
     }
 
+    if (nextView === "choose" && currentRankMode() === "power") {
+      activeView = "focus";
+      render();
+      return;
+    }
+
     if (nextView === "choose") {
       if (activeTasks().length < 2) {
         activeView = "focus";
@@ -979,7 +1205,8 @@
     refs.viewButtons.forEach((button) => {
       const view = button.dataset.viewButton;
       const hideForAuth = signInRequired() && isAccountDataView(view) && button.closest(".nav");
-      button.classList.toggle("is-hidden", hideForAuth);
+      const hideForMode = view === "choose" && currentRankMode() === "power";
+      button.classList.toggle("is-hidden", hideForAuth || hideForMode);
       button.setAttribute("aria-current", button.dataset.viewButton === activeView ? "page" : "false");
     });
 
@@ -1000,6 +1227,10 @@
       lastSyncedInput = text;
     }
 
+    refs.manualModeBtn.setAttribute("aria-current", currentRankMode() === "manual" ? "true" : "false");
+    refs.powerModeBtn.setAttribute("aria-current", currentRankMode() === "power" ? "true" : "false");
+    refs.powerContextBtn.classList.toggle("is-hidden", currentRankMode() !== "power");
+    refs.startBtn.textContent = currentRankMode() === "power" ? "Rank" : "Start";
     updateDraftCount();
   }
 
@@ -1033,6 +1264,7 @@
     const ranked = rankedTasks().filter((task) => !task.done);
     const topCount = clamp(state.topCount, 1, Math.max(1, ranked.length || state.topCount));
     state.topCount = topCount;
+    const powerMode = currentRankMode() === "power";
 
     refs.focusTitle.textContent = `Top ${topCount}`;
     refs.topCount.textContent = String(topCount);
@@ -1057,7 +1289,9 @@
       refs.allList.appendChild(createTaskRow(task, index + 1, task.done ? "restore" : "done"));
     });
 
-    refs.keepChoosing.disabled = activeTasks().length < 2;
+    refs.keepChoosing.textContent = powerMode ? "Context" : "Choose";
+    refs.keepChoosing.disabled = powerMode ? false : activeTasks().length < 2;
+    refs.resetRank.classList.toggle("is-hidden", powerMode);
   }
 
   function renderReputation() {
@@ -1244,7 +1478,7 @@
     actions.className = "task-actions";
 
     const whyButton = document.createElement("button");
-    whyButton.className = `row-meta${hasJustification(task) ? " is-set" : ""}`;
+    whyButton.className = `row-meta${hasTaskContext(task) ? " is-set" : ""}`;
     whyButton.type = "button";
     whyButton.dataset.action = "why";
     whyButton.dataset.id = task.id;
@@ -1299,6 +1533,9 @@
         id: makeId(),
         text,
         justification: "",
+        powerTime: 3,
+        powerMoney: 3,
+        powerEffort: 3,
         score: 1000,
         wins: 0,
         losses: 0,
@@ -1315,7 +1552,9 @@
     state.topCount = clamp(state.topCount, 1, Math.max(1, state.tasks.length));
     lastSyncedInput = state.tasks.map((task) => task.text).join("\n");
 
-    if (activeTasks().length > 1 && preferredView !== "focus") {
+    if (currentRankMode() === "power") {
+      activeView = "focus";
+    } else if (activeTasks().length > 1 && preferredView !== "focus") {
       startSprint();
       activeView = "choose";
     } else {
@@ -1483,6 +1722,11 @@
     whyTaskId = task.id;
     refs.whyTask.textContent = task.text;
     refs.whyInput.value = task.justification || "";
+    refs.whyTime.value = String(normalizePowerLevel(task.powerTime));
+    refs.whyMoney.value = String(normalizePowerLevel(task.powerMoney));
+    refs.whyEffort.value = String(normalizePowerLevel(task.powerEffort));
+    refs.whyPowerFields.classList.toggle("is-hidden", currentRankMode() !== "power");
+    updateWhyPowerRead();
 
     if (typeof refs.whyDialog.showModal === "function") {
       refs.whyDialog.showModal();
@@ -1494,6 +1738,27 @@
     whyTaskId = null;
     if (refs.whyDialog.open) {
       refs.whyDialog.close();
+    }
+  }
+
+  function openPowerDialog() {
+    const profile = state.reputation.profile;
+    refs.powerNorthStar.value = profile.powerNorthStar || "";
+    refs.powerDefinition.value = profile.powerDefinition || "";
+    refs.powerAssets.value = profile.powerAssets || "";
+    refs.powerConstraints.value = profile.powerConstraints || "";
+    refs.powerAvoid.value = profile.powerAvoid || "";
+    refs.powerHorizon.value = profile.powerHorizon || "2y";
+
+    if (typeof refs.powerDialog.showModal === "function") {
+      refs.powerDialog.showModal();
+      refs.powerNorthStar.focus();
+    }
+  }
+
+  function closePowerDialog() {
+    if (refs.powerDialog.open) {
+      refs.powerDialog.close();
     }
   }
 
@@ -1537,7 +1802,28 @@
     }
 
     task.justification = refs.whyInput.value.trim();
+    task.powerTime = normalizePowerLevel(refs.whyTime.value);
+    task.powerMoney = normalizePowerLevel(refs.whyMoney.value);
+    task.powerEffort = normalizePowerLevel(refs.whyEffort.value);
     closeWhyDialog();
+    saveState();
+    render();
+  }
+
+  function savePowerProfile(event) {
+    event.preventDefault();
+
+    state.reputation.profile = {
+      ...state.reputation.profile,
+      powerNorthStar: refs.powerNorthStar.value.trim(),
+      powerDefinition: refs.powerDefinition.value.trim(),
+      powerAssets: refs.powerAssets.value.trim(),
+      powerConstraints: refs.powerConstraints.value.trim(),
+      powerAvoid: refs.powerAvoid.value.trim(),
+      powerHorizon: normalizePowerHorizon(refs.powerHorizon.value)
+    };
+
+    closePowerDialog();
     saveState();
     render();
   }
@@ -2060,6 +2346,10 @@
   }
 
   function resetRank() {
+    if (currentRankMode() === "power") {
+      return;
+    }
+
     state.tasks.forEach((task) => {
       task.score = 1000;
       task.wins = 0;
@@ -2093,7 +2383,15 @@
       return;
     }
 
-    state = freshState();
+    state = {
+      ...freshState(),
+      reputation: {
+        profileId: state.reputation.profileId,
+        profile: normalizeProfile(state.reputation.profile),
+        proofs: [],
+        supporters: state.reputation.supporters.slice()
+      }
+    };
     activeView = "input";
     lastSyncedInput = "";
     refs.taskInput.value = "";
@@ -2209,6 +2507,22 @@
   }
 
   function rankedTasks() {
+    if (currentRankMode() === "power") {
+      return state.tasks
+        .map((task) => ({
+          task,
+          powerScore: powerScoreForTask(task)
+        }))
+        .sort((a, b) => {
+          if (a.task.done !== b.task.done) {
+            return a.task.done ? 1 : -1;
+          }
+
+          return b.powerScore - a.powerScore || a.task.createdAt - b.task.createdAt;
+        })
+        .map((entry) => entry.task);
+    }
+
     return [...state.tasks].sort((a, b) => {
       if (a.done !== b.done) {
         return a.done ? 1 : -1;
@@ -2242,6 +2556,214 @@
         seen.add(key);
         return true;
       });
+  }
+
+  function normalizeRankMode(value) {
+    return value === "power" ? "power" : "manual";
+  }
+
+  function normalizePowerHorizon(value) {
+    return ["6m", "2y", "5y"].includes(value) ? value : "2y";
+  }
+
+  function normalizePowerLevel(value) {
+    const level = Number(value);
+    return level === 1 || level === 3 || level === 5 ? level : 3;
+  }
+
+  function updateWhyPowerRead() {
+    const task = findTask(whyTaskId);
+    const preview = {
+      ...(task || {}),
+      justification: refs.whyInput.value.trim(),
+      powerTime: normalizePowerLevel(refs.whyTime.value),
+      powerMoney: normalizePowerLevel(refs.whyMoney.value),
+      powerEffort: normalizePowerLevel(refs.whyEffort.value)
+    };
+
+    refs.whyPowerRead.textContent =
+      currentRankMode() === "power" ? powerReasonForTask(preview) : powerResourceSummary(preview);
+  }
+
+  function powerScoreForTask(task) {
+    return analyzePowerTask(task).score;
+  }
+
+  function powerReasonForTask(task) {
+    return analyzePowerTask(task).reason;
+  }
+
+  function analyzePowerTask(task) {
+    const profile = normalizeProfile(state.reputation.profile);
+    const content = [task?.text || "", task?.justification || ""].join(" ").toLowerCase();
+    const contextTerms = extractMeaningfulTerms(
+      [profile.powerNorthStar, profile.powerDefinition, profile.powerAssets].join(" ")
+    );
+    const assetTerms = extractMeaningfulTerms(profile.powerAssets);
+    const avoidTerms = extractMeaningfulTerms(profile.powerAvoid);
+    const powerWords = {
+      systems: ["system", "automate", "automation", "template", "workflow", "process", "tool", "script", "delegate", "document", "pipeline"],
+      assets: ["build", "create", "asset", "product", "offer", "brand", "portfolio", "list", "newsletter", "channel", "audience", "library"],
+      money: ["sell", "sales", "client", "customer", "invoice", "proposal", "pricing", "revenue", "cash", "lead", "outreach", "deal"],
+      distribution: ["publish", "post", "launch", "video", "youtube", "tiktok", "instagram", "podcast", "share", "email"],
+      learning: ["learn", "study", "practice", "train", "read", "research", "prototype", "test"],
+      relationships: ["call", "meet", "message", "reach out", "follow up", "follow-up", "network", "mentor", "partner", "collaborate", "hire"],
+      health: ["sleep", "exercise", "workout", "walk", "run", "gym", "meditate", "meal", "cook", "health"],
+      maintenance: ["clean", "tidy", "admin", "inbox", "errand", "chores", "shopping", "paperwork", "booking", "schedule", "meeting", "reply"],
+      drain: ["scroll", "doomscroll", "netflix", "tv", "game", "gaming", "browse"]
+    };
+    const hits = Object.fromEntries(
+      Object.entries(powerWords).map(([key, phrases]) => [key, countPhraseHits(content, phrases)])
+    );
+    const alignmentHits = countPhraseHits(content, contextTerms);
+    const assetHits = countPhraseHits(content, assetTerms);
+    const avoidHits = countPhraseHits(content, avoidTerms);
+    const horizon = normalizePowerHorizon(profile.powerHorizon);
+    const horizonWeight =
+      horizon === "6m"
+        ? { systems: 10, assets: 12, money: 18, distribution: 14, learning: 6, relationships: 10, health: 8 }
+        : horizon === "5y"
+          ? { systems: 18, assets: 16, money: 10, distribution: 8, learning: 14, relationships: 13, health: 16 }
+          : { systems: 15, assets: 14, money: 14, distribution: 11, learning: 10, relationships: 11, health: 12 };
+    const valueScore =
+      hits.systems * horizonWeight.systems +
+      hits.assets * horizonWeight.assets +
+      hits.money * horizonWeight.money +
+      hits.distribution * horizonWeight.distribution +
+      hits.learning * horizonWeight.learning +
+      hits.relationships * horizonWeight.relationships +
+      hits.health * horizonWeight.health +
+      alignmentHits * 8 +
+      assetHits * 6;
+    const sustainabilityScore = hits.systems * 7 + hits.learning * 5 + hits.relationships * 4 + hits.health * 7;
+    const maintenancePenalty = hits.maintenance * 10 + hits.drain * 18 + avoidHits * 12;
+    const powerTime = normalizePowerLevel(task?.powerTime);
+    const powerMoney = normalizePowerLevel(task?.powerMoney);
+    const powerEffort = normalizePowerLevel(task?.powerEffort);
+    const resourcePenalty = powerTime * 7 + powerMoney * 6 + powerEffort * 8;
+    const efficiencyBonus = powerTime + powerMoney + powerEffort <= 5 ? 12 : powerTime + powerMoney + powerEffort <= 8 ? 6 : 0;
+    const score = Math.round(
+      100 + valueScore + sustainabilityScore + efficiencyBonus - maintenancePenalty - resourcePenalty
+    );
+    const strongestTheme =
+      [
+        ["systems", hits.systems],
+        ["assets", hits.assets],
+        ["money", hits.money],
+        ["distribution", hits.distribution],
+        ["learning", hits.learning],
+        ["relationships", hits.relationships],
+        ["health", hits.health]
+      ].sort((a, b) => b[1] - a[1])[0][0];
+    const themeCopy = {
+      systems: "Compounding system.",
+      assets: "Builds an asset.",
+      money: "Strong payoff path.",
+      distribution: "Grows reach.",
+      learning: "Builds skill.",
+      relationships: "Expands relationships.",
+      health: "Protects energy."
+    };
+    const stance =
+      maintenancePenalty > valueScore
+        ? "Lower leverage."
+        : alignmentHits > 0
+          ? "Fits your direction."
+          : themeCopy[strongestTheme];
+    const reason = `${stance} ${powerResourceSummary({ powerTime, powerMoney, powerEffort })}`;
+
+    return { score, reason };
+  }
+
+  function powerResourceSummary(task) {
+    const bits = [
+      `Time ${powerLevelLabel(task?.powerTime)}`,
+      `money ${powerLevelLabel(task?.powerMoney)}`,
+      `effort ${powerLevelLabel(task?.powerEffort)}`
+    ];
+    return bits.join(", ") + ".";
+  }
+
+  function powerLevelLabel(value) {
+    const level = normalizePowerLevel(value);
+    if (level === 1) {
+      return "low";
+    }
+
+    if (level === 5) {
+      return "high";
+    }
+
+    return "medium";
+  }
+
+  function countPhraseHits(text, phrases) {
+    return phrases.reduce((count, phrase) => {
+      if (!phrase || phrase.length < 3) {
+        return count;
+      }
+
+      return text.includes(String(phrase).toLowerCase()) ? count + 1 : count;
+    }, 0);
+  }
+
+  function extractMeaningfulTerms(value) {
+    const stopwords = new Set([
+      "about",
+      "after",
+      "again",
+      "along",
+      "because",
+      "before",
+      "between",
+      "could",
+      "doing",
+      "from",
+      "have",
+      "into",
+      "long",
+      "make",
+      "more",
+      "most",
+      "need",
+      "only",
+      "over",
+      "same",
+      "should",
+      "some",
+      "than",
+      "that",
+      "them",
+      "then",
+      "there",
+      "these",
+      "they",
+      "this",
+      "want",
+      "with",
+      "your"
+    ]);
+
+    return Array.from(
+      new Set(
+        String(value || "")
+          .toLowerCase()
+          .split(/[^a-z0-9]+/)
+          .map((part) => part.trim())
+          .filter((part) => part.length >= 4 && !stopwords.has(part))
+      )
+    );
+  }
+
+  function isMissingColumnError(error) {
+    const message = [error?.message, error?.details, error?.hint, error?.code].filter(Boolean).join(" ").toLowerCase();
+    return (
+      message.includes("could not find the") ||
+      message.includes("schema cache") ||
+      message.includes("pgrst204") ||
+      message.includes("42703") ||
+      (message.includes("column") && message.includes("does not exist"))
+    );
   }
 
   function expectedScore(a, b) {

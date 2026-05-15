@@ -165,6 +165,54 @@ summary:focus-visible {
   justify-content: flex-end;
 }
 
+.compose-controls,
+.compose-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.compose-controls {
+  margin: 14px 0 0;
+}
+
+.compose-actions {
+  justify-content: flex-end;
+}
+
+.compose-actions .subtle,
+.compose-actions .primary {
+  flex: 0 0 auto;
+}
+
+.mode-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  min-height: 42px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.mode-toggle button {
+  min-width: 72px;
+  min-height: 36px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 12px;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.mode-toggle button[aria-current="true"] {
+  background: var(--ink);
+  color: white;
+}
+
 .kicker {
   margin: 0;
   color: var(--muted);
@@ -739,6 +787,14 @@ h2 {
   gap: 12px;
 }
 
+.modal-field {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .modal input,
 .modal select,
 .modal textarea {
@@ -756,6 +812,33 @@ h2 {
   padding: 12px;
   resize: vertical;
   line-height: 1.55;
+}
+
+.power-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.power-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.power-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.power-read {
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .dialog-actions {
@@ -805,6 +888,20 @@ h2 {
     flex: 1;
   }
 
+  .compose-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .compose-actions {
+    width: 100%;
+  }
+
+  .compose-actions .subtle,
+  .compose-actions .primary {
+    flex: 1;
+  }
+
   .screen {
     min-height: calc(100svh - 174px);
   }
@@ -834,6 +931,10 @@ h2 {
   .supporter-tag {
     justify-self: start;
     text-align: left;
+  }
+
+  .power-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .privacy-list label {
