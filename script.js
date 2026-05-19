@@ -1505,15 +1505,17 @@
   }
 
   function createObjectiveItem(node, depth) {
+    const isLinkedTask = Boolean(node.taskId && findTask(node.taskId));
     const item = document.createElement("li");
     item.className = "objective-item";
+    item.classList.toggle("is-task-item", isLinkedTask);
+    item.classList.toggle("is-selected", selectedObjectiveId === node.id);
     item.style.animationDelay = `${Math.min(depth, 7) * 24}ms`;
     item.style.setProperty("--depth", depth);
 
     const row = document.createElement("div");
     row.className = "objective-node";
 
-    const isLinkedTask = Boolean(node.taskId && findTask(node.taskId));
     const pick = document.createElement("button");
     pick.className = `objective-pick${isLinkedTask ? " is-task" : ""}`;
     pick.type = "button";
@@ -1546,7 +1548,7 @@
     row.appendChild(pick);
     item.appendChild(row);
 
-    if (selectedObjectiveId === node.id) {
+    if (selectedObjectiveId === node.id || isLinkedTask) {
       item.appendChild(createObjectiveActions(node));
     }
 
@@ -1568,10 +1570,10 @@
   }
 
   function createObjectiveActions(node) {
-    const actions = document.createElement("div");
-    actions.className = "objective-branch-actions";
     const children = objectiveChildren(node.id);
     const isLinked = Boolean(node.taskId && findTask(node.taskId));
+    const actions = document.createElement("div");
+    actions.className = `objective-branch-actions${isLinked ? " is-task-actions" : ""}`;
 
     if (!isLinked) {
       const addButton = document.createElement("button");

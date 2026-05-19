@@ -472,6 +472,24 @@ summary:focus-visible {
   padding: 4px 0 2px;
 }
 
+.objective-branch-actions.is-task-actions {
+  display: none;
+  position: absolute;
+  top: 11px;
+  right: 8px;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+}
+
+.objective-item.is-task-item:hover > .objective-branch-actions.is-task-actions {
+  display: flex;
+}
+
+.objective-item.is-task-item:hover > .objective-node .objective-state {
+  opacity: 0;
+}
+
 .objective-action {
   min-height: 30px;
   border: 1px solid var(--line);
@@ -485,6 +503,11 @@ summary:focus-visible {
 
 .objective-action.is-danger {
   color: var(--danger);
+}
+
+.objective-branch-actions.is-task-actions .objective-action.is-danger {
+  min-height: 28px;
+  background: var(--panel);
 }
 
 .objective-child-form {
