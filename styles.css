@@ -483,25 +483,57 @@ summary:focus-visible {
 .objective-node {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: 4px;
   align-items: center;
   min-height: 40px;
   margin: 2px 0;
   animation: rowIn 220ms ease both;
 }
 
+.objective-toggle,
+.objective-toggle-spacer {
+  width: 24px;
+  height: 34px;
+  align-self: center;
+}
+
+.objective-toggle {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  transition: background 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.objective-toggle:hover,
+.objective-toggle:focus-visible {
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+}
+
+.objective-toggle .control-icon {
+  width: 16px;
+  height: 16px;
+  transition: transform 140ms ease;
+}
+
+.objective-item.is-collapsed > .objective-node .objective-toggle .control-icon {
+  transform: rotate(-90deg);
+}
+
 .objective-pick {
   min-width: 0;
   width: 100%;
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
+  display: block;
   border: 0;
   border-radius: 7px;
   background: transparent;
   color: inherit;
-  padding: 7px 8px;
+  padding: 7px 8px 7px 4px;
   text-align: left;
   transition: background 140ms ease, color 140ms ease;
 }
@@ -513,22 +545,6 @@ summary:focus-visible {
 .objective-pick[aria-current="true"] {
   background: color-mix(in srgb, var(--accent) 10%, white);
   color: var(--accent);
-}
-
-.objective-marker {
-  width: 10px;
-  height: 10px;
-  justify-self: center;
-  border: 2px solid var(--line-strong);
-  border-radius: 50%;
-}
-
-.objective-pick.is-task .objective-marker {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  border-color: var(--accent);
-  background: var(--accent-soft);
 }
 
 .objective-main {
@@ -1339,10 +1355,6 @@ h2 {
   .map-form,
   .objective-child-form {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .objective-pick {
-    grid-template-columns: 18px minmax(0, 1fr);
   }
 
   .objective-state {

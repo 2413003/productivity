@@ -255,6 +255,9 @@
       sprintStartTaps: Number(saved.sprintStartTaps) || 0,
       tasks: normalizeTasks(saved.tasks),
       objectives: normalizeObjectives(saved.objectives),
+      collapsedObjectives: Array.isArray(saved.collapsedObjectives)
+        ? saved.collapsedObjectives.filter((id) => typeof id === "string" && id)
+        : [],
       reputation: normalizeReputation(saved.reputation),
       comparisons: Array.isArray(saved.comparisons) ? saved.comparisons : [],
       pairHistory: Array.isArray(saved.pairHistory) ? saved.pairHistory : [],
@@ -335,6 +338,7 @@
     return {
       tasks: [],
       objectives: [],
+      collapsedObjectives: [],
       draftText: "",
       topCount: 1,
       totalTaps: 0,
@@ -1501,6 +1505,9 @@
       selectedObjectiveId = null;
     }
 
+    const existingIds = new Set(state.objectives.map((node) => node.id));
+    state.collapsedObjectives = (state.collapsedObjectives || []).filter((id) => existingIds.has(id));
+
     roots.forEach((node) => {
       refs.objectiveTree.appendChild(createObjectiveItem(node, 0));
     });
@@ -1508,15 +1515,38 @@
 
   function createObjectiveItem(node, depth) {
     const isLinkedTask = Boolean(node.taskId && findTask(node.taskId));
+    const children = objectiveChildren(node.id);
+    const isDrafting = objectiveDraftParentId === node.id;
+    const hasBranch = children.length || isDrafting;
+    const isCollapsed = hasBranch && objectiveIsCollapsed(node.id) && !isDrafting;
     const item = document.createElement("li");
     item.className = "objective-item";
     item.classList.toggle("is-task-item", isLinkedTask);
     item.classList.toggle("is-selected", selectedObjectiveId === node.id);
+    item.classList.toggle("is-collapsed", isCollapsed);
+    item.classList.toggle("has-branch", Boolean(children.length));
     item.style.animationDelay = `${Math.min(depth, 7) * 24}ms`;
     item.style.setProperty("--depth", depth);
 
     const row = document.createElement("div");
     row.className = "objective-node";
+
+    if (hasBranch) {
+      const toggle = document.createElement("button");
+      toggle.className = "objective-toggle";
+      toggle.type = "button";
+      toggle.dataset.action = "toggle-branch";
+      toggle.dataset.id = node.id;
+      toggle.setAttribute("aria-label", isCollapsed ? "Show branch" : "Hide branch");
+      toggle.setAttribute("aria-expanded", String(!isCollapsed));
+      toggle.appendChild(createControlIcon("chevron"));
+      row.appendChild(toggle);
+    } else {
+      const spacer = document.createElement("span");
+      spacer.className = "objective-toggle-spacer";
+      spacer.setAttribute("aria-hidden", "true");
+      row.appendChild(spacer);
+    }
 
     const pick = document.createElement("button");
     pick.className = `objective-pick${isLinkedTask ? " is-task" : ""}`;
@@ -1524,10 +1554,6 @@
     pick.dataset.action = "select";
     pick.dataset.id = node.id;
     pick.setAttribute("aria-current", selectedObjectiveId === node.id ? "true" : "false");
-
-    const marker = document.createElement("span");
-    marker.className = "objective-marker";
-    marker.setAttribute("aria-hidden", "true");
 
     const main = document.createElement("span");
     main.className = "objective-main";
@@ -1542,17 +1568,16 @@
 
     main.append(title, meta);
 
-    pick.append(marker, main);
+    pick.append(main);
     row.appendChild(pick);
     row.appendChild(createObjectiveActions(node));
     item.appendChild(row);
 
-    if (objectiveDraftParentId === node.id) {
+    if (isDrafting) {
       item.appendChild(createObjectiveDraftForm(node.id));
     }
 
-    const children = objectiveChildren(node.id);
-    if (children.length) {
+    if (children.length && !isCollapsed) {
       const childList = document.createElement("ul");
       childList.className = "objective-list";
       children.forEach((child) => {
@@ -1822,9 +1847,15 @@
       return;
     }
 
+    if (action === "toggle-branch") {
+      toggleObjectiveBranch(node.id);
+      return;
+    }
+
     if (action === "add-child") {
       selectedObjectiveId = node.id;
       objectiveDraftParentId = node.id;
+      expandObjective(node.id);
       render();
       window.setTimeout(() => document.getElementById("objectiveDraftInput")?.focus(), 0);
       return;
@@ -1857,7 +1888,34 @@
     });
     selectedObjectiveId = id;
     objectiveDraftParentId = null;
+    if (parentId) {
+      expandObjective(parentId);
+    }
     saveState({ immediate: true });
+    render();
+  }
+
+  function objectiveIsCollapsed(id) {
+    return (state.collapsedObjectives || []).includes(id);
+  }
+
+  function expandObjective(id) {
+    state.collapsedObjectives = (state.collapsedObjectives || []).filter((item) => item !== id);
+  }
+
+  function toggleObjectiveBranch(id) {
+    const collapsed = new Set(state.collapsedObjectives || []);
+    if (collapsed.has(id)) {
+      collapsed.delete(id);
+    } else {
+      collapsed.add(id);
+      if (objectiveDraftParentId === id) {
+        objectiveDraftParentId = null;
+      }
+    }
+
+    state.collapsedObjectives = Array.from(collapsed);
+    saveState();
     render();
   }
 
@@ -1877,6 +1935,7 @@
     }
 
     state.objectives = state.objectives.filter((node) => !removeIds.has(node.id));
+    state.collapsedObjectives = (state.collapsedObjectives || []).filter((nodeId) => !removeIds.has(nodeId));
     if (removeIds.has(objectiveDraftParentId)) {
       objectiveDraftParentId = null;
     }
@@ -2246,6 +2305,7 @@
     }
 
     const paths = {
+      chevron: ["m6 9 6 6 6-6"],
       check: ["m5 12 4 4 10-10"],
       step: ["M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16"],
       task: ["M5 5h14v14H5z", "m8 9 2 2 4-4"],
