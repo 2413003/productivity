@@ -463,6 +463,21 @@ summary:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.task-path {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateY(-2px);
+  transition: max-height 140ms ease, opacity 140ms ease, transform 140ms ease;
+}
+
+.task-row:hover .task-path,
+.task-row:focus-within .task-path {
+  max-height: 24px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .objective-pick[aria-current="true"] .objective-title,
 .objective-pick[aria-current="true"] .objective-meta {
   color: inherit;
@@ -753,7 +768,7 @@ h2 {
 .task-main {
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: 0;
 }
 
 .task-text {
@@ -788,6 +803,8 @@ h2 {
 }
 
 .row-meta {
+  display: none;
+  place-items: center;
   min-width: 54px;
   min-height: 34px;
   border: 1px solid var(--line);
@@ -797,6 +814,11 @@ h2 {
   padding: 0 10px;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.task-row:hover .row-meta,
+.task-row:focus-within .row-meta {
+  display: grid;
 }
 
 .row-meta.is-set {
