@@ -1582,6 +1582,18 @@
       actions.appendChild(addButton);
     }
 
+    if (isLinked) {
+      const stepButton = document.createElement("button");
+      stepButton.className = "objective-action icon-action";
+      stepButton.type = "button";
+      stepButton.dataset.action = "make-step";
+      stepButton.dataset.id = node.id;
+      stepButton.setAttribute("aria-label", "Mark step");
+      stepButton.dataset.tooltip = "Mark step";
+      stepButton.appendChild(createControlIcon("step"));
+      actions.appendChild(stepButton);
+    }
+
     if (!isLinked && !children.length) {
       const taskButton = document.createElement("button");
       taskButton.className = "objective-action icon-action";
@@ -1823,6 +1835,11 @@
       return;
     }
 
+    if (action === "make-step") {
+      markObjectiveAsStep(node.id);
+      return;
+    }
+
     if (action === "delete") {
       deleteObjective(node.id);
     }
@@ -1907,6 +1924,49 @@
     saveState({ immediate: true });
     render();
     return task;
+  }
+
+  function markObjectiveAsStep(objectiveId) {
+    const node = findObjective(objectiveId);
+    if (!node) {
+      return;
+    }
+
+    const taskId = node.taskId;
+    node.kind = "objective";
+    node.taskId = "";
+    selectedObjectiveId = node.id;
+
+    removePlainObjectiveTask(taskId, node);
+    syncDraftFromTasks();
+    state.currentPair = null;
+    ensurePair();
+    saveState({ immediate: true });
+    render();
+  }
+
+  function removePlainObjectiveTask(taskId, node) {
+    const task = taskId ? findTask(taskId) : null;
+    if (!task) {
+      return;
+    }
+
+    const linkedElsewhere = state.objectives.some((item) => item.id !== node.id && item.taskId === taskId);
+    const hasProof = state.reputation.proofs.some((proof) => proof.taskId === taskId);
+    const isPlainObjectiveTask =
+      !linkedElsewhere &&
+      !task.done &&
+      !hasProof &&
+      task.text.trim().toLowerCase() === node.text.trim().toLowerCase() &&
+      task.justification.trim() === objectivePath(node.id).join(" / ");
+
+    if (!isPlainObjectiveTask) {
+      return;
+    }
+
+    state.tasks = state.tasks.filter((item) => item.id !== taskId);
+    state.comparisons = state.comparisons.filter((item) => item.winnerId !== taskId && item.loserId !== taskId);
+    state.pairHistory = state.pairHistory.filter((key) => !key.split(":").includes(taskId));
   }
 
   function syncDraftFromTasks() {
@@ -2187,6 +2247,7 @@
 
     const paths = {
       check: ["m5 12 4 4 10-10"],
+      step: ["M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16"],
       task: ["M5 5h14v14H5z", "m8 9 2 2 4-4"],
       trash: ["M4 7h16", "M10 11v6", "M14 11v6", "M6 7l1 13h10l1-13", "M9 7V5h6v2"]
     };
