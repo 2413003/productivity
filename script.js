@@ -53,6 +53,7 @@
     inviteBtn: document.getElementById("inviteBtn"),
     publicBtn: document.getElementById("publicBtn"),
     editProfileBtn: document.getElementById("editProfileBtn"),
+    profileSignOutBtn: document.getElementById("profileSignOutBtn"),
     addSupportBtn: document.getElementById("addSupportBtn"),
     copySignalBtn: document.getElementById("copySignalBtn"),
     profileVisibility: document.getElementById("profileVisibility"),
@@ -186,6 +187,7 @@
     refs.inviteBtn.addEventListener("click", copyInviteLink);
     refs.publicBtn.addEventListener("click", showPublicProfile);
     refs.editProfileBtn.addEventListener("click", openProfileDialog);
+    refs.profileSignOutBtn.addEventListener("click", signOut);
     refs.addSupportBtn?.addEventListener("click", () => openSupportDialog());
     refs.copySignalBtn.addEventListener("click", copyLatestSignal);
     refs.profileVisibility.addEventListener("change", savePrivacySettings);
@@ -1562,6 +1564,7 @@
     refs.proofVisibility.value = profile.proofVisibility;
     refs.discoverableToggle.checked = profile.discoverable;
     refs.friendRequestsToggle.checked = profile.allowFriendRequests;
+    refs.profileSignOutBtn.classList.toggle("is-hidden", !session);
 
     refs.proofList.innerHTML = "";
     const doneTasks = [...state.tasks]
