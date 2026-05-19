@@ -549,10 +549,15 @@ summary:focus-visible {
   padding: 4px 0 2px;
 }
 
-.objective-item:hover > .objective-branch-actions,
-.objective-item:focus-within:not(.is-task-item) > .objective-branch-actions,
+.objective-item:not(.is-task-item) > .objective-node:hover + .objective-branch-actions,
+.objective-item:not(.is-task-item) > .objective-node:focus-within + .objective-branch-actions,
 .objective-item.is-selected:not(.is-task-item) > .objective-branch-actions {
   display: flex;
+}
+
+.objective-item.is-selected:not(.is-task-item):has(.objective-item:hover) > .objective-branch-actions,
+.objective-item.is-selected:not(.is-task-item):has(.objective-item:focus-within) > .objective-branch-actions {
+  display: none;
 }
 
 .objective-branch-actions.is-task-actions {
