@@ -16,9 +16,11 @@ window.DO_SUPABASE_CONFIG = {
 
 Notes:
 - The anon key is designed to be public in browser apps. Row-level security in `supabase.schema.sql` protects user data.
+- Rerun `supabase.schema.sql` after app updates. It uses `if not exists` and the `do_task_bracket_v1_` namespace, so rerunning it only adds missing app columns/policies and does not touch other Supabase data.
 - Add your app URL to Supabase Auth redirect URLs so password reset emails can return to the app.
 - All database objects are namespaced with `do_task_bracket_v1_` so they do not collide with existing Supabase tables, functions, triggers, indexes, or policies.
 - If you ran an earlier draft of this schema, it may have created `do_*` tables. The app no longer uses those names. Leave them alone unless you have checked they contain no data you need.
 - Tasks are private to the signed-in user.
+- Draft task text, task order/ranking data, task notes, power-mode context, proof, and profile settings are saved for the signed-in user.
 - Profile, proof, friend requests, and discoverability use the privacy settings in the app.
 - Friend feedback requires a signed-in Supabase user when the backend is configured; otherwise the app uses share links.

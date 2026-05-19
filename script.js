@@ -1,6 +1,7 @@
 (function () {
   const STORE_KEY = "priority-state-v1";
   const LEGACY_STORE_KEY = "two-choice-state-v1";
+  const ACCOUNT_STORE_PREFIX = "do-account-state-v1:";
   const BACKEND_CONFIG_KEY = "do-supabase-config-v1";
   const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
   const SPRINT_MS = 60000;
@@ -126,6 +127,8 @@
   let session = null;
   let cloudSaveTimer = null;
   let cloudBusy = false;
+  let cloudSaveNeeded = false;
+  let cloudLoadedUserId = null;
   let activeView = backendConfigured() ? "account" : state.tasks.length ? "focus" : "input";
   let lastSyncedInput = "";
   let recoveryMode = hasRecoveryLink();
@@ -139,7 +142,7 @@
   let lastSignalUrl = "";
   let cloudSchema = {
     profilePower: null,
-    taskPower: null
+    taskLevel: null
   };
 
   init();
@@ -149,7 +152,7 @@
       button.addEventListener("click", () => setView(button.dataset.viewButton));
     });
 
-    refs.taskInput.addEventListener("input", updateDraftCount);
+    refs.taskInput.addEventListener("input", saveDraftInput);
     refs.startBtn.addEventListener("click", () => applyTasks("choose"));
     refs.manualModeBtn.addEventListener("click", () => setRankMode("manual"));
     refs.powerModeBtn.addEventListener("click", () => setRankMode("power"));
@@ -212,6 +215,14 @@
       state = loadState();
       render();
     });
+    window.addEventListener("pagehide", () => {
+      flushCloudSaveNow();
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        flushCloudSaveNow();
+      }
+    });
     window.addEventListener("hashchange", () => {
       handleHash();
       render();
@@ -233,52 +244,57 @@
   }
 
   function loadState() {
-    const base = freshState();
-
     try {
       const raw = localStorage.getItem(STORE_KEY) || localStorage.getItem(LEGACY_STORE_KEY);
       const saved = JSON.parse(raw || "null");
-      if (!saved || !Array.isArray(saved.tasks)) {
-        return base;
-      }
+      return normalizeSavedState(saved);
+    } catch (error) {
+      return freshState();
+    }
+  }
+
+  function normalizeSavedState(saved) {
+    const base = freshState();
+    if (!saved || !Array.isArray(saved.tasks)) {
+      return base;
+    }
 
       return {
         ...base,
         ...saved,
+        draftText: typeof saved.draftText === "string" ? saved.draftText : "",
         topCount: clamp(Number(saved.topCount) || 3, 1, 99),
-        totalTaps: Number(saved.totalTaps) || 0,
-        sprintStartTaps: Number(saved.sprintStartTaps) || 0,
-        tasks: saved.tasks
-          .filter((task) => task && typeof task.text === "string")
-          .map((task) => ({
-            id: task.id || makeId(),
-            text: task.text.trim(),
-            justification: typeof task.justification === "string" ? task.justification.trim() : "",
-            powerTime: normalizePowerLevel(task.powerTime),
-            powerMoney: normalizePowerLevel(task.powerMoney),
-            powerEffort: normalizePowerLevel(task.powerEffort),
-            score: Number.isFinite(task.score) ? task.score : 1000,
-            wins: Number(task.wins) || 0,
-            losses: Number(task.losses) || 0,
-            seen: Number(task.seen) || 0,
-            done: Boolean(task.done),
-            doneAt: Number(task.doneAt) || null,
-            createdAt: Number(task.createdAt) || Date.now()
-          }))
-          .filter((task) => task.text),
-        reputation: normalizeReputation(saved.reputation),
-        comparisons: Array.isArray(saved.comparisons) ? saved.comparisons : [],
-        pairHistory: Array.isArray(saved.pairHistory) ? saved.pairHistory : [],
-        currentPair: Array.isArray(saved.currentPair) ? saved.currentPair : null
-      };
-    } catch (error) {
-      return base;
-    }
+      totalTaps: Number(saved.totalTaps) || 0,
+      sprintStartTaps: Number(saved.sprintStartTaps) || 0,
+      tasks: saved.tasks
+        .filter((task) => task && typeof task.text === "string")
+        .map((task) => ({
+          id: task.id || makeId(),
+          text: task.text.trim(),
+          justification: typeof task.justification === "string" ? task.justification.trim() : "",
+          powerTime: normalizePowerLevel(task.powerTime),
+          powerMoney: normalizePowerLevel(task.powerMoney),
+          powerEffort: normalizePowerLevel(task.powerEffort),
+          score: Number.isFinite(task.score) ? task.score : 1000,
+          wins: Number(task.wins) || 0,
+          losses: Number(task.losses) || 0,
+          seen: Number(task.seen) || 0,
+          done: Boolean(task.done),
+          doneAt: Number(task.doneAt) || null,
+          createdAt: Number(task.createdAt) || Date.now()
+        }))
+        .filter((task) => task.text),
+      reputation: normalizeReputation(saved.reputation),
+      comparisons: Array.isArray(saved.comparisons) ? saved.comparisons : [],
+      pairHistory: Array.isArray(saved.pairHistory) ? saved.pairHistory : [],
+      currentPair: Array.isArray(saved.currentPair) ? saved.currentPair : null
+    };
   }
 
   function freshState() {
     return {
       tasks: [],
+      draftText: "",
       topCount: 3,
       totalTaps: 0,
       sprintStartTaps: 0,
@@ -353,13 +369,51 @@
     };
   }
 
-  function saveState() {
+  function saveState(options = {}) {
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
-    scheduleCloudSave();
+    saveAccountState();
+    scheduleCloudSave(options);
   }
 
   function saveStateLocalOnly() {
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    saveAccountState();
+  }
+
+  function saveAccountState(source = state) {
+    const userId = session?.user?.id;
+    if (!userId) {
+      return;
+    }
+
+    try {
+      localStorage.setItem(
+        accountStoreKey(userId),
+        JSON.stringify({
+          ...source,
+          cachedAt: Date.now()
+        })
+      );
+    } catch (error) {
+      console.warn("Couldn't save account cache", error);
+    }
+  }
+
+  function loadAccountState(userId) {
+    if (!userId) {
+      return null;
+    }
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(accountStoreKey(userId)) || "null");
+      return saved && Array.isArray(saved.tasks) ? normalizeSavedState(saved) : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function accountStoreKey(userId) {
+    return `${ACCOUNT_STORE_PREFIX}${userId}`;
   }
 
   function backendConfigured() {
@@ -613,6 +667,9 @@
       return;
     }
 
+    await waitForCloudIdle();
+    await flushCloudSaveNow();
+    await waitForCloudIdle();
     await supabaseClient.auth.signOut();
     recoveryMode = false;
     refs.recoveryForm.reset();
@@ -626,10 +683,11 @@
 
   async function syncNow() {
     if (!supabaseClient || !session || cloudBusy) {
+      cloudSaveNeeded = Boolean(session) || cloudSaveNeeded;
       return;
     }
 
-    const localBeforePull = cloneState(state);
+    const localBeforePull = localFallbackForSession();
     cloudBusy = true;
     setSyncStatus("Syncing");
     render();
@@ -637,9 +695,11 @@
     try {
       await ensureProfile();
       const result = await pullCloudState(localBeforePull);
-      if (result.usedLocalFallback) {
+      cloudLoadedUserId = session.user.id;
+      if (result.shouldPush) {
         await pushCloudState();
       }
+      saveAccountState();
       setSyncStatus("Synced");
     } catch (error) {
       console.error(error);
@@ -647,34 +707,63 @@
     } finally {
       cloudBusy = false;
       render();
+      if (cloudSaveNeeded) {
+        scheduleCloudSave({ immediate: true });
+      }
     }
   }
 
-  function scheduleCloudSave() {
-    if (!supabaseClient || !session || cloudBusy) {
+  function scheduleCloudSave(options = {}) {
+    cloudSaveNeeded = true;
+
+    if (!supabaseClient || !session) {
+      return;
+    }
+
+    if (cloudBusy) {
       return;
     }
 
     window.clearTimeout(cloudSaveTimer);
-    cloudSaveTimer = window.setTimeout(async () => {
-      if (!supabaseClient || !session || cloudBusy) {
-        return;
-      }
+    const delay = options.retry ? 5000 : options.immediate ? 0 : 250;
+    cloudSaveTimer = window.setTimeout(runQueuedCloudSave, delay);
+  }
 
-      cloudBusy = true;
-      setSyncStatus("Saving");
-      try {
-        await ensureProfile();
-        await pushCloudState();
-        setSyncStatus("Saved");
-      } catch (error) {
-        console.error(error);
-        setSyncStatus("Save error");
-      } finally {
-        cloudBusy = false;
-        render();
+  async function flushCloudSaveNow() {
+    if (!supabaseClient || !session) {
+      return;
+    }
+
+    cloudSaveNeeded = true;
+    window.clearTimeout(cloudSaveTimer);
+    await runQueuedCloudSave();
+  }
+
+  async function runQueuedCloudSave() {
+    if (!supabaseClient || !session || cloudBusy || !cloudSaveNeeded) {
+      return;
+    }
+
+    cloudBusy = true;
+    cloudSaveNeeded = false;
+    setSyncStatus("Saving");
+
+    try {
+      await ensureProfile();
+      await pushCloudState();
+      saveAccountState();
+      setSyncStatus("Saved");
+    } catch (error) {
+      cloudSaveNeeded = true;
+      console.error(error);
+      setSyncStatus("Save error");
+    } finally {
+      cloudBusy = false;
+      render();
+      if (cloudSaveNeeded) {
+        scheduleCloudSave({ retry: true });
       }
-    }, 700);
+    }
   }
 
   async function ensureProfile() {
@@ -738,25 +827,37 @@
     }
   }
 
-  async function upsertCloudTasks(taskRecords, legacyTaskRecords) {
-    const targetRecords = cloudSchema.taskPower === false ? legacyTaskRecords : taskRecords;
-    let { error } = await supabaseClient.from(TABLES.tasks).upsert(targetRecords, { onConflict: "id" });
+  async function upsertCloudTasks(fullRecords, whyRecords, basicRecords) {
+    const levels =
+      cloudSchema.taskLevel === "basic"
+        ? [{ level: "basic", records: basicRecords }]
+        : cloudSchema.taskLevel === "why"
+          ? [
+              { level: "why", records: whyRecords },
+              { level: "basic", records: basicRecords }
+            ]
+          : [
+              { level: "full", records: fullRecords },
+              { level: "why", records: whyRecords },
+              { level: "basic", records: basicRecords }
+            ];
 
-    if (error && isMissingColumnError(error) && cloudSchema.taskPower !== false) {
-      cloudSchema.taskPower = false;
-      ({ error } = await supabaseClient.from(TABLES.tasks).upsert(legacyTaskRecords, { onConflict: "id" }));
-    } else if (!error) {
-      cloudSchema.taskPower = targetRecords === taskRecords;
-    }
+    for (const option of levels) {
+      const { error } = await supabaseClient.from(TABLES.tasks).upsert(option.records, { onConflict: "id" });
+      if (!error) {
+        cloudSchema.taskLevel = option.level;
+        return;
+      }
 
-    if (error) {
-      throw error;
+      if (!isMissingColumnError(error) || option.level === "basic") {
+        throw error;
+      }
     }
   }
 
   async function fetchCloudProfile(ownerId) {
     const powerSelect =
-      "display_name,username,bio,avatar_url,profile_visibility,proof_visibility,discoverable,allow_friend_requests,rank_mode,power_north_star,power_definition,power_assets,power_constraints,power_avoid,power_horizon";
+      "display_name,username,bio,avatar_url,profile_visibility,proof_visibility,discoverable,allow_friend_requests,task_draft,rank_mode,power_north_star,power_definition,power_assets,power_constraints,power_avoid,power_horizon";
     const legacySelect =
       "display_name,username,bio,avatar_url,profile_visibility,proof_visibility,discoverable,allow_friend_requests";
     const select = cloudSchema.profilePower === false ? legacySelect : powerSelect;
@@ -776,30 +877,50 @@
   }
 
   async function fetchCloudTasks(ownerId) {
-    const powerSelect = "id,text,justification,power_time,power_money,power_effort,score,wins,losses,seen,done,done_at,created_at";
-    const legacySelect = "id,text,justification,score,wins,losses,seen,done,done_at,created_at";
-    const select = cloudSchema.taskPower === false ? legacySelect : powerSelect;
-    let result = await supabaseClient
-      .from(TABLES.tasks)
-      .select(select)
-      .eq("owner_id", ownerId)
-      .order("created_at", { ascending: true });
+    const selects =
+      cloudSchema.taskLevel === "basic"
+        ? [{ level: "basic", select: "id,text,score,wins,losses,seen,done,done_at,created_at" }]
+        : cloudSchema.taskLevel === "why"
+          ? [
+              { level: "why", select: "id,text,justification,score,wins,losses,seen,done,done_at,created_at" },
+              { level: "basic", select: "id,text,score,wins,losses,seen,done,done_at,created_at" }
+            ]
+          : [
+              {
+                level: "full",
+                select:
+                  "id,text,justification,power_time,power_money,power_effort,score,wins,losses,seen,done,done_at,created_at"
+              },
+              { level: "why", select: "id,text,justification,score,wins,losses,seen,done,done_at,created_at" },
+              { level: "basic", select: "id,text,score,wins,losses,seen,done,done_at,created_at" }
+            ];
 
-    if (result.error && isMissingColumnError(result.error) && cloudSchema.taskPower !== false) {
-      cloudSchema.taskPower = false;
-      result = await supabaseClient
+    for (const option of selects) {
+      const result = await supabaseClient
         .from(TABLES.tasks)
-        .select(legacySelect)
+        .select(option.select)
         .eq("owner_id", ownerId)
         .order("created_at", { ascending: true });
-    } else if (!result.error) {
-      cloudSchema.taskPower = select === powerSelect;
+
+      if (!result.error) {
+        cloudSchema.taskLevel = option.level;
+        return {
+          ...result,
+          hasJustification: option.level !== "basic",
+          powerFields: option.level === "full"
+        };
+      }
+
+      if (!isMissingColumnError(result.error) || option.level === "basic") {
+        return {
+          ...result,
+          hasJustification: option.level !== "basic",
+          powerFields: option.level === "full"
+        };
+      }
     }
 
-    return {
-      ...result,
-      powerFields: cloudSchema.taskPower !== false
-    };
+    return { data: [], error: null, hasJustification: false, powerFields: false };
   }
 
   async function pushCloudState() {
@@ -821,6 +942,7 @@
       done_count: stats.done,
       proof_count: stats.proofs,
       support_count: stats.supporters,
+      task_draft: state.draftText || "",
       rank_mode: currentRankMode(),
       power_north_star: profile.powerNorthStar || "",
       power_definition: profile.powerDefinition || "",
@@ -833,11 +955,14 @@
     if (state.tasks.length) {
       await upsertCloudTasks(
         state.tasks.map((task) => taskRecord(task, ownerId)),
-        state.tasks.map((task) => legacyTaskRecord(task, ownerId))
+        state.tasks.map((task) => legacyTaskRecord(task, ownerId)),
+        state.tasks.map((task) => basicTaskRecord(task, ownerId))
       );
     }
 
-    await deleteMissingRows(TABLES.tasks, "owner_id", ownerId, state.tasks.map((task) => task.id));
+    if (cloudLoadedUserId === ownerId) {
+      await deleteMissingRows(TABLES.tasks, "owner_id", ownerId, state.tasks.map((task) => task.id));
+    }
 
     if (state.reputation.proofs.length) {
       const { error } = await supabaseClient.from(TABLES.proofs).upsert(
@@ -850,7 +975,9 @@
       }
     }
 
-    await deleteMissingRows(TABLES.proofs, "owner_id", ownerId, state.reputation.proofs.map((proof) => proof.id));
+    if (cloudLoadedUserId === ownerId) {
+      await deleteMissingRows(TABLES.proofs, "owner_id", ownerId, state.reputation.proofs.map((proof) => proof.id));
+    }
 
     const ownSignals = state.reputation.supporters.filter((signal) => signal.profileId === ownerId);
     if (ownSignals.length) {
@@ -901,7 +1028,7 @@
       return {
         id: task.id,
         text: task.text,
-        justification: task.justification || "",
+        justification: tasksResult.hasJustification ? task.justification || "" : localTask?.justification || "",
         powerTime: tasksResult.powerFields
           ? normalizePowerLevel(task.power_time)
           : normalizePowerLevel(localTask?.powerTime),
@@ -949,6 +1076,9 @@
         ? profileResult.data.power_horizon || "2y"
         : localFallback?.reputation?.profile?.powerHorizon || "2y"
     });
+    const cloudDraft = profileResult.powerFields && typeof profileResult.data.task_draft === "string"
+      ? profileResult.data.task_draft
+      : "";
     const cloudProofs = proofsResult.data.map((proof) => ({
       id: proof.id,
       taskId: proof.task_id || "",
@@ -965,33 +1095,50 @@
       createdAt: signal.created_at ? Date.parse(signal.created_at) : Date.now()
     }));
 
-    const shouldKeepLocal =
-      !cloudTasks.length && Array.isArray(localFallback?.tasks) && localFallback.tasks.length > 0;
+    const localTasks = Array.isArray(localFallback?.tasks) ? localFallback.tasks : [];
+    const localProofs = localFallback?.reputation?.proofs || [];
+    const localSupporters = localFallback?.reputation?.supporters || [];
+    const mergedTasks = mergeTaskLists(cloudTasks, localTasks);
+    const mergedProofs = mergeById(cloudProofs, localProofs);
+    const mergedSupporters = mergeById(cloudSupporters, localSupporters);
+    const localAddedTasks = mergedTasks.length > cloudTasks.length;
+    const localAddedProofs = mergedProofs.length > cloudProofs.length;
+    const localAddedSupporters = mergedSupporters.length > cloudSupporters.length;
+    const shouldKeepLocal = !cloudTasks.length && localTasks.length > 0;
 
     if (shouldKeepLocal) {
       state = {
         ...localFallback,
-        tasks: localFallback.tasks,
+        tasks: mergedTasks,
+        draftText: localFallback.draftText || cloudDraft || mergedTasks.map((task) => task.text).join("\n"),
         reputation: {
           profileId: ownerId,
           profile: mergeProfiles(localFallback.reputation?.profile, cloudProfile),
-          proofs: localFallback.reputation?.proofs || [],
-          supporters: mergeById(localFallback.reputation?.supporters || [], cloudSupporters)
+          proofs: mergedProofs,
+          supporters: mergedSupporters
         }
       };
     } else {
-      state.tasks = cloudTasks;
+      state.tasks = mergedTasks;
+      state.draftText = localFallback?.draftText || cloudDraft || mergedTasks.map((task) => task.text).join("\n");
       state.reputation.profileId = ownerId;
       state.reputation.profile = mergeProfiles(localFallback?.reputation?.profile, cloudProfile);
-      state.reputation.proofs = cloudProofs;
-      state.reputation.supporters = cloudSupporters;
+      state.reputation.proofs = mergedProofs;
+      state.reputation.supporters = mergedSupporters;
     }
 
     state.currentPair = null;
-    lastSyncedInput = state.tasks.map((task) => task.text).join("\n");
+    lastSyncedInput = state.draftText || state.tasks.map((task) => task.text).join("\n");
     saveStateLocalOnly();
 
-    return { usedLocalFallback: shouldKeepLocal };
+    return {
+      shouldPush:
+        shouldKeepLocal ||
+        localAddedTasks ||
+        localAddedProofs ||
+        localAddedSupporters ||
+        Boolean(localFallback?.draftText && localFallback.draftText !== cloudDraft)
+    };
   }
 
   async function deleteMissingRows(table, ownerColumn, ownerId, keepIds) {
@@ -1053,6 +1200,21 @@
     };
   }
 
+  function basicTaskRecord(task, ownerId) {
+    return {
+      id: task.id,
+      owner_id: ownerId,
+      text: task.text,
+      score: task.score,
+      wins: task.wins,
+      losses: task.losses,
+      seen: task.seen,
+      done: task.done,
+      done_at: toIso(task.doneAt),
+      created_at: toIso(task.createdAt)
+    };
+  }
+
   function proofRecord(proof, ownerId) {
     return {
       id: proof.id,
@@ -1066,6 +1228,94 @@
 
   function cloneState(source) {
     return JSON.parse(JSON.stringify(source));
+  }
+
+  function localFallbackForSession() {
+    const current = cloneState(state);
+    const cached = loadAccountState(session?.user?.id);
+
+    if (!cached) {
+      return current;
+    }
+
+    return mergeLocalStates(current, cached);
+  }
+
+  function mergeLocalStates(primary, secondary) {
+    const result = {
+      ...primary,
+      draftText: primary?.draftText || secondary?.draftText || "",
+      tasks: mergeTaskLists(primary?.tasks || [], secondary?.tasks || []),
+      reputation: {
+        profileId: primary?.reputation?.profileId || secondary?.reputation?.profileId || makeId(),
+        profile: mergeProfiles(secondary?.reputation?.profile, primary?.reputation?.profile),
+        proofs: mergeById(primary?.reputation?.proofs || [], secondary?.reputation?.proofs || []),
+        supporters: mergeById(primary?.reputation?.supporters || [], secondary?.reputation?.supporters || [])
+      }
+    };
+
+    return result.tasks.length || !primary?.tasks?.length ? result : primary;
+  }
+
+  function mergeTaskLists(primaryTasks, secondaryTasks) {
+    const merged = [];
+    const byId = new Map();
+    const byText = new Map();
+
+    [...primaryTasks, ...secondaryTasks].forEach((task) => {
+      if (!task?.text) {
+        return;
+      }
+
+      const textKey = task.text.trim().toLowerCase();
+      const existing = (task.id && byId.get(task.id)) || byText.get(textKey);
+
+      if (existing) {
+        combineTasks(existing, task);
+        if (task.id) {
+          byId.set(task.id, existing);
+        }
+        byText.set(textKey, existing);
+        return;
+      }
+
+      const copy = {
+        id: task.id || makeId(),
+        text: task.text.trim(),
+        justification: task.justification || "",
+        powerTime: normalizePowerLevel(task.powerTime),
+        powerMoney: normalizePowerLevel(task.powerMoney),
+        powerEffort: normalizePowerLevel(task.powerEffort),
+        score: Number.isFinite(task.score) ? task.score : 1000,
+        wins: Number(task.wins) || 0,
+        losses: Number(task.losses) || 0,
+        seen: Number(task.seen) || 0,
+        done: Boolean(task.done),
+        doneAt: Number(task.doneAt) || null,
+        createdAt: Number(task.createdAt) || Date.now()
+      };
+
+      merged.push(copy);
+      byId.set(copy.id, copy);
+      byText.set(textKey, copy);
+    });
+
+    return merged.sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  function combineTasks(target, source) {
+    target.text = target.text || source.text;
+    target.justification = target.justification || source.justification || "";
+    target.powerTime = target.powerTime === 3 ? normalizePowerLevel(source.powerTime) : target.powerTime;
+    target.powerMoney = target.powerMoney === 3 ? normalizePowerLevel(source.powerMoney) : target.powerMoney;
+    target.powerEffort = target.powerEffort === 3 ? normalizePowerLevel(source.powerEffort) : target.powerEffort;
+    target.score = Math.max(Number(target.score) || 1000, Number(source.score) || 1000);
+    target.wins = Math.max(Number(target.wins) || 0, Number(source.wins) || 0);
+    target.losses = Math.max(Number(target.losses) || 0, Number(source.losses) || 0);
+    target.seen = Math.max(Number(target.seen) || 0, Number(source.seen) || 0);
+    target.done = Boolean(target.done || source.done);
+    target.doneAt = Math.max(Number(target.doneAt) || 0, Number(source.doneAt) || 0) || null;
+    target.createdAt = Math.min(Number(target.createdAt) || Date.now(), Number(source.createdAt) || Date.now());
   }
 
   function mergeProfiles(localProfile, cloudProfile) {
@@ -1131,7 +1381,7 @@
       activeView = "focus";
     }
 
-    saveState();
+    saveState({ immediate: true });
     render();
   }
 
@@ -1219,7 +1469,7 @@
   }
 
   function renderInput() {
-    const text = state.tasks.map((task) => task.text).join("\n");
+    const text = state.draftText || state.tasks.map((task) => task.text).join("\n");
     const inputIsActive = document.activeElement === refs.taskInput;
 
     if (!inputIsActive && text !== lastSyncedInput) {
@@ -1502,6 +1752,12 @@
     refs.startBtn.disabled = count === 0;
   }
 
+  function saveDraftInput() {
+    state.draftText = refs.taskInput.value;
+    updateDraftCount();
+    saveState();
+  }
+
   function draftChanged() {
     const draft = parseTasks(refs.taskInput.value).join("\n");
     const saved = state.tasks.map((task) => task.text).join("\n");
@@ -1550,7 +1806,8 @@
     state.pairHistory = [];
     state.currentPair = null;
     state.topCount = clamp(state.topCount, 1, Math.max(1, state.tasks.length));
-    lastSyncedInput = state.tasks.map((task) => task.text).join("\n");
+    state.draftText = state.tasks.map((task) => task.text).join("\n");
+    lastSyncedInput = state.draftText;
 
     if (currentRankMode() === "power") {
       activeView = "focus";
@@ -1561,7 +1818,7 @@
       activeView = "focus";
     }
 
-    saveState();
+    saveState({ immediate: true });
     render();
   }
 
@@ -2369,6 +2626,7 @@
   function clearDone() {
     const removed = new Set(state.tasks.filter((task) => task.done).map((task) => task.id));
     state.tasks = state.tasks.filter((task) => !task.done);
+    state.draftText = state.tasks.map((task) => task.text).join("\n");
     state.reputation.proofs = state.reputation.proofs.filter((proof) => !removed.has(proof.taskId));
     state.currentPair = null;
     state.comparisons = [];
@@ -2401,6 +2659,9 @@
 
   function clearLocalAccountData() {
     state = freshState();
+    cloudLoadedUserId = null;
+    cloudSaveNeeded = false;
+    window.clearTimeout(cloudSaveTimer);
     publicSnapshot = null;
     pendingPublicProfileId = null;
     pendingSignal = null;
@@ -2868,5 +3129,16 @@
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+  }
+
+  async function waitForCloudIdle(timeoutMs = 3500) {
+    const startedAt = Date.now();
+    while (cloudBusy && Date.now() - startedAt < timeoutMs) {
+      await sleep(80);
+    }
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 })();
