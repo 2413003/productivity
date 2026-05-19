@@ -21,6 +21,6 @@ Notes:
 - All database objects are namespaced with `do_task_bracket_v1_` so they do not collide with existing Supabase tables, functions, triggers, indexes, or policies.
 - If you ran an earlier draft of this schema, it may have created `do_*` tables. The app no longer uses those names. Leave them alone unless you have checked they contain no data you need.
 - Tasks are private to the signed-in user.
-- Draft task text, task order/ranking data, task notes, power-mode context, proof, and profile settings are saved for the signed-in user.
+- Objective maps, draft task text, task order/ranking data, task notes, proof, and profile settings are saved for the signed-in user.
 - Profile, proof, friend requests, and discoverability use the privacy settings in the app.
 - Friend feedback requires a signed-in Supabase user when the backend is configured; otherwise the app uses share links.

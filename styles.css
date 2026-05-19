@@ -125,6 +125,7 @@ summary:focus-visible {
 }
 
 .compose,
+.map,
 .choice-wrap,
 .focus,
 .reputation,
@@ -140,6 +141,7 @@ summary:focus-visible {
 }
 
 .section-head,
+.map-head,
 .focus-head,
 .rep-head,
 .action-row,
@@ -152,6 +154,7 @@ summary:focus-visible {
 }
 
 .section-head,
+.map-head,
 .focus-head,
 .rep-head,
 .action-row,
@@ -169,7 +172,7 @@ summary:focus-visible {
 .compose-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
 }
 
@@ -186,33 +189,6 @@ summary:focus-visible {
   flex: 0 0 auto;
 }
 
-.mode-toggle {
-  display: inline-grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: center;
-  min-height: 42px;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.62);
-}
-
-.mode-toggle button {
-  min-width: 72px;
-  min-height: 36px;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-  padding: 0 12px;
-  font-size: 0.84rem;
-  font-weight: 700;
-}
-
-.mode-toggle button[aria-current="true"] {
-  background: var(--ink);
-  color: white;
-}
-
 .kicker {
   margin: 0;
   color: var(--muted);
@@ -226,6 +202,7 @@ summary:focus-visible {
 }
 
 #draftCount,
+#objectiveCount,
 #proofCount,
 #repStatus,
 #tapCount,
@@ -260,6 +237,152 @@ summary:focus-visible {
   color: #8a8f86;
 }
 
+.map {
+  align-self: start;
+}
+
+.map-head {
+  margin-bottom: clamp(18px, 4vw, 28px);
+}
+
+.map-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.map-form input,
+.objective-child-form input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 0 12px;
+}
+
+.map-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.map-status {
+  display: block;
+  min-height: 20px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.map-canvas {
+  margin-top: 18px;
+  overflow-x: auto;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.objective-list {
+  min-width: min(100%, 580px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.objective-list .objective-list {
+  margin-left: clamp(20px, 4vw, 42px);
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+}
+
+.objective-item {
+  position: relative;
+}
+
+.objective-list .objective-list .objective-item::before {
+  content: "";
+  position: absolute;
+  top: 28px;
+  left: -16px;
+  width: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.objective-node {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  border-top: 1px solid var(--line);
+  animation: rowIn 220ms ease both;
+}
+
+.objective-list > .objective-item:first-child > .objective-node {
+  border-top: 0;
+}
+
+.objective-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.objective-title {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-weight: 650;
+  line-height: 1.32;
+}
+
+.objective-meta,
+.task-path {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.objective-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.objective-action {
+  min-width: 36px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--muted);
+  padding: 0 9px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.objective-action.is-linked {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.objective-action.is-danger {
+  color: var(--danger);
+}
+
+.objective-child-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  padding: 0 0 10px clamp(20px, 4vw, 42px);
+}
+
 .primary {
   min-height: 44px;
   border-radius: 8px;
@@ -272,6 +395,7 @@ summary:focus-visible {
 
 .primary:hover,
 .choice-card:hover,
+.objective-action:hover,
 .subtle:hover,
 .quiet-row button:hover,
 .stepper button:hover,
@@ -281,6 +405,7 @@ summary:focus-visible {
 
 .primary:active,
 .choice-card:active,
+.objective-action:active,
 .subtle:active,
 .quiet-row button:active,
 .stepper button:active,
@@ -471,6 +596,12 @@ h2 {
 .rank {
   color: var(--accent);
   font-weight: 800;
+}
+
+.task-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
 }
 
 .task-text {
@@ -814,33 +945,6 @@ h2 {
   line-height: 1.55;
 }
 
-.power-fields {
-  display: grid;
-  gap: 10px;
-}
-
-.power-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.power-grid label {
-  display: grid;
-  gap: 6px;
-  color: var(--ink);
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.power-read {
-  min-height: 18px;
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
@@ -893,6 +997,20 @@ h2 {
     flex-direction: column;
   }
 
+  .map-form,
+  .objective-child-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .map-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .map-actions button {
+    width: 100%;
+  }
+
   .compose-actions {
     width: 100%;
   }
@@ -931,10 +1049,6 @@ h2 {
   .supporter-tag {
     justify-self: start;
     text-align: left;
-  }
-
-  .power-grid {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .privacy-list label {

@@ -119,7 +119,7 @@
   let cloudBusy = false;
   let cloudSaveNeeded = false;
   let cloudLoadedUserId = null;
-  let activeView = backendConfigured() ? "account" : state.tasks.length ? "focus" : "map";
+  let activeView = initialView();
   let lastSyncedInput = "";
   let recoveryMode = hasRecoveryLink();
   let proofTaskId = null;
@@ -146,11 +146,11 @@
 
     refs.taskInput.addEventListener("input", saveDraftInput);
     refs.startBtn.addEventListener("click", () => applyTasks("choose"));
-    refs.objectiveRootForm.addEventListener("submit", addRootObjective);
-    refs.objectiveTree.addEventListener("click", handleObjectiveAction);
-    refs.objectiveTree.addEventListener("submit", submitObjectiveChild);
-    refs.objectiveTree.addEventListener("keydown", handleObjectiveKeydown);
-    refs.objectivePrioritizeBtn.addEventListener("click", () => setView("choose"));
+    refs.objectiveRootForm?.addEventListener("submit", addRootObjective);
+    refs.objectiveTree?.addEventListener("click", handleObjectiveAction);
+    refs.objectiveTree?.addEventListener("submit", submitObjectiveChild);
+    refs.objectiveTree?.addEventListener("keydown", handleObjectiveKeydown);
+    refs.objectivePrioritizeBtn?.addEventListener("click", () => setView("choose"));
 
     refs.choiceA.addEventListener("click", () => chooseCurrent(0));
     refs.choiceB.addEventListener("click", () => chooseCurrent(1));
@@ -458,6 +458,22 @@
 
   function isAccountDataView(view) {
     return ["map", "input", "choose", "focus", "reputation"].includes(view);
+  }
+
+  function initialView() {
+    if (backendConfigured()) {
+      return "account";
+    }
+
+    if (state.tasks.length) {
+      return "focus";
+    }
+
+    return hasScreen("map") ? "map" : "input";
+  }
+
+  function hasScreen(view) {
+    return refs.screens.some((screen) => screen.dataset.screen === view);
   }
 
   function loadBackendConfig() {
@@ -1395,6 +1411,10 @@
   }
 
   function setView(nextView) {
+    if (!hasScreen(nextView)) {
+      nextView = hasScreen("map") ? "map" : "input";
+    }
+
     if (signInRequired() && isAccountDataView(nextView)) {
       activeView = "account";
       render();
@@ -1424,6 +1444,10 @@
   }
 
   function render() {
+    if (!hasScreen(activeView)) {
+      activeView = initialView();
+    }
+
     if (signInRequired() && isAccountDataView(activeView)) {
       activeView = "account";
     }
@@ -1450,6 +1474,10 @@
   }
 
   function renderMap() {
+    if (!refs.objectiveCount || !refs.objectiveStatus || !refs.objectivePrioritizeBtn || !refs.objectiveTree) {
+      return;
+    }
+
     const roots = objectiveChildren("");
     const linkedTasks = state.objectives.filter((node) => node.taskId && findTask(node.taskId)).length;
 
