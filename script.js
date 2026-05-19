@@ -295,7 +295,7 @@
     return {
       tasks: [],
       draftText: "",
-      topCount: 3,
+      topCount: 1,
       totalTaps: 0,
       sprintStartTaps: 0,
       sprintEndsAt: null,
