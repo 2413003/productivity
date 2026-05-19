@@ -1582,7 +1582,9 @@
       addButton.type = "button";
       addButton.dataset.action = "add-child";
       addButton.dataset.id = node.id;
-      addButton.textContent = "Add step";
+      addButton.setAttribute("aria-label", "Add step");
+      addButton.dataset.tooltip = "Add step";
+      addButton.textContent = "+";
       actions.appendChild(addButton);
     }
 
