@@ -15,11 +15,14 @@
   const refs = {
     screens: Array.from(document.querySelectorAll("[data-screen]")),
     viewButtons: Array.from(document.querySelectorAll("[data-view-button]")),
+    objectiveRootForm: document.getElementById("objectiveRootForm"),
+    objectiveRootInput: document.getElementById("objectiveRootInput"),
+    objectiveTree: document.getElementById("objectiveTree"),
+    objectiveCount: document.getElementById("objectiveCount"),
+    objectiveStatus: document.getElementById("objectiveStatus"),
+    objectivePrioritizeBtn: document.getElementById("objectivePrioritizeBtn"),
     taskInput: document.getElementById("taskInput"),
     draftCount: document.getElementById("draftCount"),
-    manualModeBtn: document.getElementById("manualModeBtn"),
-    powerModeBtn: document.getElementById("powerModeBtn"),
-    powerContextBtn: document.getElementById("powerContextBtn"),
     startBtn: document.getElementById("startBtn"),
     timeLeft: document.getElementById("timeLeft"),
     tapCount: document.getElementById("tapCount"),
@@ -77,21 +80,7 @@
     whyForm: document.getElementById("whyForm"),
     whyTask: document.getElementById("whyTask"),
     whyInput: document.getElementById("whyInput"),
-    whyTime: document.getElementById("whyTime"),
-    whyMoney: document.getElementById("whyMoney"),
-    whyEffort: document.getElementById("whyEffort"),
-    whyPowerFields: document.getElementById("whyPowerFields"),
-    whyPowerRead: document.getElementById("whyPowerRead"),
     cancelWhyBtn: document.getElementById("cancelWhyBtn"),
-    powerDialog: document.getElementById("powerDialog"),
-    powerForm: document.getElementById("powerForm"),
-    powerNorthStar: document.getElementById("powerNorthStar"),
-    powerDefinition: document.getElementById("powerDefinition"),
-    powerAssets: document.getElementById("powerAssets"),
-    powerConstraints: document.getElementById("powerConstraints"),
-    powerAvoid: document.getElementById("powerAvoid"),
-    powerHorizon: document.getElementById("powerHorizon"),
-    cancelPowerBtn: document.getElementById("cancelPowerBtn"),
     supportDialog: document.getElementById("supportDialog"),
     supportForm: document.getElementById("supportForm"),
     supportName: document.getElementById("supportName"),
@@ -130,7 +119,7 @@
   let cloudBusy = false;
   let cloudSaveNeeded = false;
   let cloudLoadedUserId = null;
-  let activeView = backendConfigured() ? "account" : state.tasks.length ? "focus" : "input";
+  let activeView = backendConfigured() ? "account" : state.tasks.length ? "focus" : "map";
   let lastSyncedInput = "";
   let recoveryMode = hasRecoveryLink();
   let proofTaskId = null;
@@ -141,8 +130,10 @@
   let activeInviteProfileId = null;
   let pendingSupportDialog = false;
   let lastSignalUrl = "";
+  let objectiveDraftParentId = null;
   let cloudSchema = {
-    profilePower: null,
+    profileDraft: null,
+    profileObjectives: null,
     taskLevel: null
   };
 
@@ -155,9 +146,11 @@
 
     refs.taskInput.addEventListener("input", saveDraftInput);
     refs.startBtn.addEventListener("click", () => applyTasks("choose"));
-    refs.manualModeBtn.addEventListener("click", () => setRankMode("manual"));
-    refs.powerModeBtn.addEventListener("click", () => setRankMode("power"));
-    refs.powerContextBtn.addEventListener("click", openPowerDialog);
+    refs.objectiveRootForm.addEventListener("submit", addRootObjective);
+    refs.objectiveTree.addEventListener("click", handleObjectiveAction);
+    refs.objectiveTree.addEventListener("submit", submitObjectiveChild);
+    refs.objectiveTree.addEventListener("keydown", handleObjectiveKeydown);
+    refs.objectivePrioritizeBtn.addEventListener("click", () => setView("choose"));
 
     refs.choiceA.addEventListener("click", () => chooseCurrent(0));
     refs.choiceB.addEventListener("click", () => chooseCurrent(1));
@@ -168,11 +161,6 @@
     refs.lessTop.addEventListener("click", () => setTopCount(-1));
     refs.moreTop.addEventListener("click", () => setTopCount(1));
     refs.keepChoosing.addEventListener("click", () => {
-      if (currentRankMode() === "power") {
-        openPowerDialog();
-        return;
-      }
-
       startSprint();
       setView("choose");
     });
@@ -197,12 +185,7 @@
     refs.proofForm.addEventListener("submit", saveProof);
     refs.skipProofBtn.addEventListener("click", closeProofDialog);
     refs.whyForm.addEventListener("submit", saveWhy);
-    refs.whyTime.addEventListener("change", updateWhyPowerRead);
-    refs.whyMoney.addEventListener("change", updateWhyPowerRead);
-    refs.whyEffort.addEventListener("change", updateWhyPowerRead);
     refs.cancelWhyBtn.addEventListener("click", closeWhyDialog);
-    refs.powerForm.addEventListener("submit", savePowerProfile);
-    refs.cancelPowerBtn.addEventListener("click", closePowerDialog);
     refs.supportForm.addEventListener("submit", saveSupport);
     refs.cancelSupportBtn.addEventListener("click", closeSupportDialog);
     refs.profileForm.addEventListener("submit", saveProfile);
@@ -257,35 +240,19 @@
 
   function normalizeSavedState(saved) {
     const base = freshState();
-    if (!saved || !Array.isArray(saved.tasks)) {
+    if (!saved || typeof saved !== "object") {
       return base;
     }
 
-      return {
-        ...base,
-        ...saved,
-        draftText: typeof saved.draftText === "string" ? saved.draftText : "",
-        topCount: clamp(Number(saved.topCount) || 3, 1, 99),
+    return {
+      ...base,
+      ...saved,
+      draftText: typeof saved.draftText === "string" ? saved.draftText : "",
+      topCount: clamp(Number(saved.topCount) || 3, 1, 99),
       totalTaps: Number(saved.totalTaps) || 0,
       sprintStartTaps: Number(saved.sprintStartTaps) || 0,
-      tasks: saved.tasks
-        .filter((task) => task && typeof task.text === "string")
-        .map((task) => ({
-          id: task.id || makeId(),
-          text: task.text.trim(),
-          justification: typeof task.justification === "string" ? task.justification.trim() : "",
-          powerTime: normalizePowerLevel(task.powerTime),
-          powerMoney: normalizePowerLevel(task.powerMoney),
-          powerEffort: normalizePowerLevel(task.powerEffort),
-          score: Number.isFinite(task.score) ? task.score : 1000,
-          wins: Number(task.wins) || 0,
-          losses: Number(task.losses) || 0,
-          seen: Number(task.seen) || 0,
-          done: Boolean(task.done),
-          doneAt: Number(task.doneAt) || null,
-          createdAt: Number(task.createdAt) || Date.now()
-        }))
-        .filter((task) => task.text),
+      tasks: normalizeTasks(saved.tasks),
+      objectives: normalizeObjectives(saved.objectives),
       reputation: normalizeReputation(saved.reputation),
       comparisons: Array.isArray(saved.comparisons) ? saved.comparisons : [],
       pairHistory: Array.isArray(saved.pairHistory) ? saved.pairHistory : [],
@@ -293,9 +260,79 @@
     };
   }
 
+  function normalizeTasks(tasks) {
+    return Array.isArray(tasks)
+      ? tasks
+          .filter((task) => task && typeof task.text === "string")
+          .map((task) => ({
+            id: task.id || makeId(),
+            text: task.text.trim(),
+            justification: typeof task.justification === "string" ? task.justification.trim() : "",
+            score: Number.isFinite(task.score) ? task.score : 1000,
+            wins: Number(task.wins) || 0,
+            losses: Number(task.losses) || 0,
+            seen: Number(task.seen) || 0,
+            done: Boolean(task.done),
+            doneAt: Number(task.doneAt) || null,
+            createdAt: Number(task.createdAt) || Date.now()
+          }))
+          .filter((task) => task.text)
+      : [];
+  }
+
+  function normalizeObjectives(objectives) {
+    const raw = Array.isArray(objectives) ? objectives : [];
+    const seen = new Set();
+    const nodes = raw
+      .filter((node) => node && typeof node.text === "string")
+      .map((node) => {
+        const id = typeof node.id === "string" && node.id ? node.id : makeId();
+        if (seen.has(id)) {
+          return null;
+        }
+        seen.add(id);
+
+        return {
+          id,
+          parentId: typeof node.parentId === "string" ? node.parentId : "",
+          text: node.text.replace(/\s+/g, " ").trim(),
+          kind: node.kind === "task" ? "task" : "objective",
+          taskId: typeof node.taskId === "string" ? node.taskId : "",
+          createdAt: Number(node.createdAt) || Date.now()
+        };
+      })
+      .filter((node) => node && node.text);
+    const ids = new Set(nodes.map((node) => node.id));
+
+    nodes.forEach((node) => {
+      if (node.parentId === node.id || !ids.has(node.parentId)) {
+        node.parentId = "";
+      }
+    });
+
+    return nodes.filter((node) => !objectiveCreatesCycle(node, nodes));
+  }
+
+  function objectiveCreatesCycle(node, nodes) {
+    const byId = new Map(nodes.map((item) => [item.id, item]));
+    const seen = new Set([node.id]);
+    let parent = byId.get(node.parentId);
+
+    while (parent) {
+      if (seen.has(parent.id)) {
+        return true;
+      }
+      seen.add(parent.id);
+      parent = byId.get(parent.parentId);
+    }
+
+    return false;
+  }
+
   function freshState() {
     return {
       tasks: [],
+      objectives: [],
       draftText: "",
       topCount: 1,
       totalTaps: 0,
@@ -360,14 +397,7 @@
         ? source.proofVisibility
         : "public",
       discoverable: source.discoverable !== false,
-      allowFriendRequests: source.allowFriendRequests !== false,
-      rankMode: normalizeRankMode(source.rankMode),
-      powerNorthStar: typeof source.powerNorthStar === "string" ? source.powerNorthStar.trim() : "",
-      powerDefinition: typeof source.powerDefinition === "string" ? source.powerDefinition.trim() : "",
-      powerAssets: typeof source.powerAssets === "string" ? source.powerAssets.trim() : "",
-      powerConstraints: typeof source.powerConstraints === "string" ? source.powerConstraints.trim() : "",
-      powerAvoid: typeof source.powerAvoid === "string" ? source.powerAvoid.trim() : "",
-      powerHorizon: normalizePowerHorizon(source.powerHorizon)
+      allowFriendRequests: source.allowFriendRequests !== false
     };
   }
 
@@ -427,7 +457,7 @@
   }
 
   function isAccountDataView(view) {
-    return ["input", "choose", "focus", "reputation"].includes(view);
+    return ["map", "input", "choose", "focus", "reputation"].includes(view);
   }
 
   function loadBackendConfig() {
@@ -798,6 +828,11 @@
   }
 
   async function updateCloudProfile(ownerId, payload) {
+    const draftPayload = {
+      ...payload
+    };
+    delete draftPayload.objective_map;
+
     const legacyPayload = {
       display_name: payload.display_name,
       username: payload.username,
@@ -814,14 +849,27 @@
       support_count: payload.support_count
     };
 
-    const targetPayload = cloudSchema.profilePower === false ? legacyPayload : payload;
+    let targetPayload =
+      cloudSchema.profileDraft === false
+        ? legacyPayload
+        : cloudSchema.profileObjectives === false
+          ? draftPayload
+          : payload;
     let { error } = await supabaseClient.from(TABLES.profiles).update(targetPayload).eq("id", ownerId);
 
-    if (error && isMissingColumnError(error) && cloudSchema.profilePower !== false) {
-      cloudSchema.profilePower = false;
+    if (error && isMissingColumnError(error) && targetPayload === payload) {
+      cloudSchema.profileObjectives = false;
+      targetPayload = draftPayload;
+      ({ error } = await supabaseClient.from(TABLES.profiles).update(draftPayload).eq("id", ownerId));
+    }
+
+    if (error && isMissingColumnError(error) && cloudSchema.profileDraft !== false) {
+      cloudSchema.profileDraft = false;
+      targetPayload = legacyPayload;
       ({ error } = await supabaseClient.from(TABLES.profiles).update(legacyPayload).eq("id", ownerId));
     } else if (!error) {
-      cloudSchema.profilePower = targetPayload === payload;
+      cloudSchema.profileDraft = targetPayload !== legacyPayload;
+      cloudSchema.profileObjectives = targetPayload === payload;
     }
 
     if (error) {
@@ -829,20 +877,14 @@
     }
   }
 
-  async function upsertCloudTasks(fullRecords, whyRecords, basicRecords) {
+  async function upsertCloudTasks(whyRecords, basicRecords) {
     const levels =
       cloudSchema.taskLevel === "basic"
         ? [{ level: "basic", records: basicRecords }]
-        : cloudSchema.taskLevel === "why"
-          ? [
-              { level: "why", records: whyRecords },
-              { level: "basic", records: basicRecords }
-            ]
-          : [
-              { level: "full", records: fullRecords },
-              { level: "why", records: whyRecords },
-              { level: "basic", records: basicRecords }
-            ];
+        : [
+            { level: "why", records: whyRecords },
+            { level: "basic", records: basicRecords }
+          ];
 
     for (const option of levels) {
       const { error } = await supabaseClient.from(TABLES.tasks).upsert(option.records, { onConflict: "id" });
@@ -858,23 +900,39 @@
   }
 
   async function fetchCloudProfile(ownerId) {
-    const powerSelect =
-      "display_name,username,bio,avatar_url,profile_visibility,proof_visibility,discoverable,allow_friend_requests,task_draft,rank_mode,power_north_star,power_definition,power_assets,power_constraints,power_avoid,power_horizon";
+    const mapSelect =
+      "display_name,username,bio,avatar_url,profile_visibility,proof_visibility,discoverable,allow_friend_requests,task_draft,objective_map";
+    const draftSelect =
+      "display_name,username,bio,avatar_url,profile_visibility,proof_visibility,discoverable,allow_friend_requests,task_draft";
     const legacySelect =
       "display_name,username,bio,avatar_url,profile_visibility,proof_visibility,discoverable,allow_friend_requests";
-    const select = cloudSchema.profilePower === false ? legacySelect : powerSelect;
+    let select =
+      cloudSchema.profileDraft === false
+        ? legacySelect
+        : cloudSchema.profileObjectives === false
+          ? draftSelect
+          : mapSelect;
     let result = await supabaseClient.from(TABLES.profiles).select(select).eq("id", ownerId).single();
 
-    if (result.error && isMissingColumnError(result.error) && cloudSchema.profilePower !== false) {
-      cloudSchema.profilePower = false;
+    if (result.error && isMissingColumnError(result.error) && select === mapSelect) {
+      cloudSchema.profileObjectives = false;
+      select = draftSelect;
+      result = await supabaseClient.from(TABLES.profiles).select(draftSelect).eq("id", ownerId).single();
+    }
+
+    if (result.error && isMissingColumnError(result.error) && cloudSchema.profileDraft !== false) {
+      cloudSchema.profileDraft = false;
+      select = legacySelect;
       result = await supabaseClient.from(TABLES.profiles).select(legacySelect).eq("id", ownerId).single();
     } else if (!result.error) {
-      cloudSchema.profilePower = select === powerSelect;
+      cloudSchema.profileDraft = select !== legacySelect;
+      cloudSchema.profileObjectives = select === mapSelect;
     }
 
     return {
       ...result,
-      powerFields: cloudSchema.profilePower !== false
+      hasDraft: select !== legacySelect && !result.error,
+      hasObjectives: select === mapSelect && !result.error
     };
   }
 
@@ -882,20 +940,10 @@
     const selects =
       cloudSchema.taskLevel === "basic"
         ? [{ level: "basic", select: "id,text,score,wins,losses,seen,done,done_at,created_at" }]
-        : cloudSchema.taskLevel === "why"
-          ? [
-              { level: "why", select: "id,text,justification,score,wins,losses,seen,done,done_at,created_at" },
-              { level: "basic", select: "id,text,score,wins,losses,seen,done,done_at,created_at" }
-            ]
-          : [
-              {
-                level: "full",
-                select:
-                  "id,text,justification,power_time,power_money,power_effort,score,wins,losses,seen,done,done_at,created_at"
-              },
-              { level: "why", select: "id,text,justification,score,wins,losses,seen,done,done_at,created_at" },
-              { level: "basic", select: "id,text,score,wins,losses,seen,done,done_at,created_at" }
-            ];
+        : [
+            { level: "why", select: "id,text,justification,score,wins,losses,seen,done,done_at,created_at" },
+            { level: "basic", select: "id,text,score,wins,losses,seen,done,done_at,created_at" }
+          ];
 
     for (const option of selects) {
       const result = await supabaseClient
@@ -908,21 +956,19 @@
         cloudSchema.taskLevel = option.level;
         return {
           ...result,
-          hasJustification: option.level !== "basic",
-          powerFields: option.level === "full"
+          hasJustification: option.level !== "basic"
         };
       }
 
       if (!isMissingColumnError(result.error) || option.level === "basic") {
         return {
           ...result,
-          hasJustification: option.level !== "basic",
-          powerFields: option.level === "full"
+          hasJustification: option.level !== "basic"
         };
       }
     }
 
-    return { data: [], error: null, hasJustification: false, powerFields: false };
+    return { data: [], error: null, hasJustification: false };
   }
 
   async function pushCloudState() {
@@ -945,19 +991,12 @@
       proof_count: stats.proofs,
       support_count: stats.supporters,
       task_draft: state.draftText || "",
-      rank_mode: currentRankMode(),
-      power_north_star: profile.powerNorthStar || "",
-      power_definition: profile.powerDefinition || "",
-      power_assets: profile.powerAssets || "",
-      power_constraints: profile.powerConstraints || "",
-      power_avoid: profile.powerAvoid || "",
-      power_horizon: profile.powerHorizon || "2y"
+      objective_map: normalizeObjectives(state.objectives)
     });
 
     if (state.tasks.length) {
       await upsertCloudTasks(
         state.tasks.map((task) => taskRecord(task, ownerId)),
-        state.tasks.map((task) => legacyTaskRecord(task, ownerId)),
         state.tasks.map((task) => basicTaskRecord(task, ownerId))
       );
     }
@@ -1031,15 +1070,6 @@
         id: task.id,
         text: task.text,
         justification: tasksResult.hasJustification ? task.justification || "" : localTask?.justification || "",
-        powerTime: tasksResult.powerFields
-          ? normalizePowerLevel(task.power_time)
-          : normalizePowerLevel(localTask?.powerTime),
-        powerMoney: tasksResult.powerFields
-          ? normalizePowerLevel(task.power_money)
-          : normalizePowerLevel(localTask?.powerMoney),
-        powerEffort: tasksResult.powerFields
-          ? normalizePowerLevel(task.power_effort)
-          : normalizePowerLevel(localTask?.powerEffort),
         score: Number(task.score) || 1000,
         wins: Number(task.wins) || 0,
         losses: Number(task.losses) || 0,
@@ -1057,30 +1087,14 @@
       profileVisibility: profileResult.data.profile_visibility || "public",
       proofVisibility: profileResult.data.proof_visibility || "public",
       discoverable: profileResult.data.discoverable !== false,
-      allowFriendRequests: profileResult.data.allow_friend_requests !== false,
-      rankMode: profileResult.powerFields ? profileResult.data.rank_mode : localFallback?.reputation?.profile?.rankMode,
-      powerNorthStar: profileResult.powerFields
-        ? profileResult.data.power_north_star || ""
-        : localFallback?.reputation?.profile?.powerNorthStar || "",
-      powerDefinition: profileResult.powerFields
-        ? profileResult.data.power_definition || ""
-        : localFallback?.reputation?.profile?.powerDefinition || "",
-      powerAssets: profileResult.powerFields
-        ? profileResult.data.power_assets || ""
-        : localFallback?.reputation?.profile?.powerAssets || "",
-      powerConstraints: profileResult.powerFields
-        ? profileResult.data.power_constraints || ""
-        : localFallback?.reputation?.profile?.powerConstraints || "",
-      powerAvoid: profileResult.powerFields
-        ? profileResult.data.power_avoid || ""
-        : localFallback?.reputation?.profile?.powerAvoid || "",
-      powerHorizon: profileResult.powerFields
-        ? profileResult.data.power_horizon || "2y"
-        : localFallback?.reputation?.profile?.powerHorizon || "2y"
+      allowFriendRequests: profileResult.data.allow_friend_requests !== false
     });
-    const cloudDraft = profileResult.powerFields && typeof profileResult.data.task_draft === "string"
+    const cloudDraft = profileResult.hasDraft && typeof profileResult.data.task_draft === "string"
       ? profileResult.data.task_draft
       : "";
+    const cloudObjectives = profileResult.hasObjectives
+      ? normalizeObjectives(profileResult.data.objective_map)
+      : normalizeObjectives(localFallback?.objectives);
     const cloudProofs = proofsResult.data.map((proof) => ({
       id: proof.id,
       taskId: proof.task_id || "",
@@ -1098,12 +1112,15 @@
     }));
 
     const localTasks = Array.isArray(localFallback?.tasks) ? localFallback.tasks : [];
+    const localObjectives = normalizeObjectives(localFallback?.objectives);
     const localProofs = localFallback?.reputation?.proofs || [];
     const localSupporters = localFallback?.reputation?.supporters || [];
     const mergedTasks = mergeTaskLists(cloudTasks, localTasks);
+    const mergedObjectives = mergeObjectiveMaps(cloudObjectives, localObjectives);
     const mergedProofs = mergeById(cloudProofs, localProofs);
     const mergedSupporters = mergeById(cloudSupporters, localSupporters);
     const localAddedTasks = mergedTasks.length > cloudTasks.length;
+    const localAddedObjectives = mergedObjectives.length > cloudObjectives.length;
     const localAddedProofs = mergedProofs.length > cloudProofs.length;
     const localAddedSupporters = mergedSupporters.length > cloudSupporters.length;
     const shouldKeepLocal = !cloudTasks.length && localTasks.length > 0;
@@ -1112,6 +1129,7 @@
       state = {
         ...localFallback,
         tasks: mergedTasks,
+        objectives: mergedObjectives,
         draftText: localFallback.draftText || cloudDraft || mergedTasks.map((task) => task.text).join("\n"),
         reputation: {
           profileId: ownerId,
@@ -1122,6 +1140,7 @@
       };
     } else {
       state.tasks = mergedTasks;
+      state.objectives = mergedObjectives;
       state.draftText = localFallback?.draftText || cloudDraft || mergedTasks.map((task) => task.text).join("\n");
       state.reputation.profileId = ownerId;
       state.reputation.profile = mergeProfiles(localFallback?.reputation?.profile, cloudProfile);
@@ -1137,6 +1156,7 @@
       shouldPush:
         shouldKeepLocal ||
         localAddedTasks ||
+        localAddedObjectives ||
         localAddedProofs ||
         localAddedSupporters ||
         Boolean(localFallback?.draftText && localFallback.draftText !== cloudDraft)
@@ -1168,25 +1188,6 @@
   }
 
   function taskRecord(task, ownerId) {
-    return {
-      id: task.id,
-      owner_id: ownerId,
-      text: task.text,
-      justification: task.justification || "",
-      power_time: normalizePowerLevel(task.powerTime),
-      power_money: normalizePowerLevel(task.powerMoney),
-      power_effort: normalizePowerLevel(task.powerEffort),
-      score: task.score,
-      wins: task.wins,
-      losses: task.losses,
-      seen: task.seen,
-      done: task.done,
-      done_at: toIso(task.doneAt),
-      created_at: toIso(task.createdAt)
-    };
-  }
-
-  function legacyTaskRecord(task, ownerId) {
     return {
       id: task.id,
       owner_id: ownerId,
@@ -1248,6 +1249,7 @@
       ...primary,
       draftText: primary?.draftText || secondary?.draftText || "",
       tasks: mergeTaskLists(primary?.tasks || [], secondary?.tasks || []),
+      objectives: mergeObjectiveMaps(primary?.objectives || [], secondary?.objectives || []),
       reputation: {
         profileId: primary?.reputation?.profileId || secondary?.reputation?.profileId || makeId(),
         profile: mergeProfiles(secondary?.reputation?.profile, primary?.reputation?.profile),
@@ -1285,9 +1287,6 @@
         id: task.id || makeId(),
         text: task.text.trim(),
         justification: task.justification || "",
-        powerTime: normalizePowerLevel(task.powerTime),
-        powerMoney: normalizePowerLevel(task.powerMoney),
-        powerEffort: normalizePowerLevel(task.powerEffort),
         score: Number.isFinite(task.score) ? task.score : 1000,
         wins: Number(task.wins) || 0,
         losses: Number(task.losses) || 0,
@@ -1305,12 +1304,34 @@
     return merged.sort((a, b) => a.createdAt - b.createdAt);
   }
 
+  function mergeObjectiveMaps(primaryObjectives, secondaryObjectives) {
+    const merged = [];
+    const byId = new Map();
+    const byKey = new Map();
+
+    [...normalizeObjectives(primaryObjectives), ...normalizeObjectives(secondaryObjectives)].forEach((node) => {
+      const key = `${node.parentId || ""}:${node.text.toLowerCase()}`;
+      const existing = byId.get(node.id) || byKey.get(key);
+
+      if (existing) {
+        existing.kind = existing.kind === "task" || node.kind === "task" ? "task" : "objective";
+        existing.taskId = existing.taskId || node.taskId;
+        existing.createdAt = Math.min(existing.createdAt, node.createdAt);
+        return;
+      }
+
+      const copy = { ...node };
+      merged.push(copy);
+      byId.set(copy.id, copy);
+      byKey.set(key, copy);
+    });
+
+    return normalizeObjectives(merged).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
   function combineTasks(target, source) {
     target.text = target.text || source.text;
     target.justification = target.justification || source.justification || "";
-    target.powerTime = target.powerTime === 3 ? normalizePowerLevel(source.powerTime) : target.powerTime;
-    target.powerMoney = target.powerMoney === 3 ? normalizePowerLevel(source.powerMoney) : target.powerMoney;
-    target.powerEffort = target.powerEffort === 3 ? normalizePowerLevel(source.powerEffort) : target.powerEffort;
     target.score = Math.max(Number(target.score) || 1000, Number(source.score) || 1000);
     target.wins = Math.max(Number(target.wins) || 0, Number(source.wins) || 0);
     target.losses = Math.max(Number(target.losses) || 0, Number(source.losses) || 0);
@@ -1329,14 +1350,7 @@
       displayName: local.displayName || cloud.displayName,
       username: local.username || cloud.username,
       bio: local.bio || cloud.bio,
-      avatarUrl: local.avatarUrl || cloud.avatarUrl,
-      rankMode: cloud.rankMode,
-      powerNorthStar: cloud.powerNorthStar || local.powerNorthStar,
-      powerDefinition: cloud.powerDefinition || local.powerDefinition,
-      powerAssets: cloud.powerAssets || local.powerAssets,
-      powerConstraints: cloud.powerConstraints || local.powerConstraints,
-      powerAvoid: cloud.powerAvoid || local.powerAvoid,
-      powerHorizon: cloud.powerHorizon || local.powerHorizon
+      avatarUrl: local.avatarUrl || cloud.avatarUrl
     };
   }
 
@@ -1355,36 +1369,7 @@
   }
 
   function hasTaskContext(task) {
-    return (
-      hasJustification(task) ||
-      normalizePowerLevel(task?.powerTime) !== 3 ||
-      normalizePowerLevel(task?.powerMoney) !== 3 ||
-      normalizePowerLevel(task?.powerEffort) !== 3
-    );
-  }
-
-  function currentRankMode() {
-    return normalizeRankMode(state.reputation.profile?.rankMode);
-  }
-
-  function setRankMode(mode) {
-    const nextMode = normalizeRankMode(mode);
-    if (currentRankMode() === nextMode) {
-      render();
-      return;
-    }
-
-    state.reputation.profile = {
-      ...state.reputation.profile,
-      rankMode: nextMode
-    };
-
-    if (nextMode === "power" && activeView === "choose") {
-      activeView = "focus";
-    }
-
-    saveState({ immediate: true });
-    render();
+    return hasJustification(task);
   }
 
   function setSyncStatus(message) {
@@ -1421,12 +1406,6 @@
       return;
     }
 
-    if (nextView === "choose" && currentRankMode() === "power") {
-      activeView = "focus";
-      render();
-      return;
-    }
-
     if (nextView === "choose") {
       if (activeTasks().length < 2) {
         activeView = "focus";
@@ -1457,17 +1436,136 @@
     refs.viewButtons.forEach((button) => {
       const view = button.dataset.viewButton;
       const hideForAuth = signInRequired() && isAccountDataView(view) && button.closest(".nav");
-      const hideForMode = view === "choose" && currentRankMode() === "power";
-      button.classList.toggle("is-hidden", hideForAuth || hideForMode);
+      button.classList.toggle("is-hidden", hideForAuth);
       button.setAttribute("aria-current", button.dataset.viewButton === activeView ? "page" : "false");
     });
 
+    renderMap();
     renderInput();
     renderChoose();
     renderFocus();
     renderReputation();
     renderPublic();
     renderAccount();
+  }
+
+  function renderMap() {
+    const roots = objectiveChildren("");
+    const linkedTasks = state.objectives.filter((node) => node.taskId && findTask(node.taskId)).length;
+
+    refs.objectiveCount.textContent = `Branches: ${state.objectives.length}`;
+    refs.objectiveStatus.textContent = `Tasks: ${linkedTasks}`;
+    refs.objectivePrioritizeBtn.disabled = activeTasks().length < 2;
+    refs.objectiveTree.innerHTML = "";
+
+    if (!roots.length) {
+      const empty = document.createElement("li");
+      empty.className = "empty";
+      empty.textContent = "Add an objective";
+      refs.objectiveTree.appendChild(empty);
+      return;
+    }
+
+    roots.forEach((node) => {
+      refs.objectiveTree.appendChild(createObjectiveItem(node, 0));
+    });
+  }
+
+  function createObjectiveItem(node, depth) {
+    const item = document.createElement("li");
+    item.className = "objective-item";
+    item.style.animationDelay = `${Math.min(depth, 7) * 24}ms`;
+
+    const row = document.createElement("div");
+    row.className = "objective-node";
+
+    const main = document.createElement("span");
+    main.className = "objective-main";
+
+    const title = document.createElement("span");
+    title.className = "objective-title";
+    title.textContent = node.text;
+
+    const meta = document.createElement("span");
+    meta.className = "objective-meta";
+    meta.textContent = objectiveMeta(node);
+
+    main.append(title, meta);
+
+    const actions = document.createElement("span");
+    actions.className = "objective-actions";
+
+    const addButton = document.createElement("button");
+    addButton.className = "objective-action";
+    addButton.type = "button";
+    addButton.dataset.action = "add-child";
+    addButton.dataset.id = node.id;
+    addButton.title = "Add branch";
+    addButton.setAttribute("aria-label", `Add branch to ${node.text}`);
+    addButton.textContent = "+";
+
+    const taskButton = document.createElement("button");
+    taskButton.className = `objective-action${node.taskId && findTask(node.taskId) ? " is-linked" : ""}`;
+    taskButton.type = "button";
+    taskButton.dataset.action = node.taskId && findTask(node.taskId) ? "open-task" : "make-task";
+    taskButton.dataset.id = node.id;
+    taskButton.title = node.taskId && findTask(node.taskId) ? "View task" : "Make task";
+    taskButton.textContent = "Task";
+
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "objective-action is-danger";
+    deleteButton.type = "button";
+    deleteButton.dataset.action = "delete";
+    deleteButton.dataset.id = node.id;
+    deleteButton.title = "Delete branch";
+    deleteButton.setAttribute("aria-label", `Delete ${node.text}`);
+    deleteButton.textContent = "x";
+
+    actions.append(addButton, taskButton, deleteButton);
+    row.append(main, actions);
+    item.appendChild(row);
+
+    if (objectiveDraftParentId === node.id) {
+      item.appendChild(createObjectiveDraftForm(node.id));
+    }
+
+    const children = objectiveChildren(node.id);
+    if (children.length) {
+      const childList = document.createElement("ul");
+      childList.className = "objective-list";
+      children.forEach((child) => {
+        childList.appendChild(createObjectiveItem(child, depth + 1));
+      });
+      item.appendChild(childList);
+    }
+
+    return item;
+  }
+
+  function createObjectiveDraftForm(parentId) {
+    const form = document.createElement("form");
+    form.className = "objective-child-form";
+    form.dataset.parentId = parentId;
+
+    const input = document.createElement("input");
+    input.id = "objectiveDraftInput";
+    input.type = "text";
+    input.autocomplete = "off";
+    input.placeholder = "Branch";
+
+    const add = document.createElement("button");
+    add.className = "primary";
+    add.type = "submit";
+    add.textContent = "Add";
+
+    const cancel = document.createElement("button");
+    cancel.className = "subtle";
+    cancel.type = "button";
+    cancel.dataset.action = "cancel-child";
+    cancel.textContent = "Cancel";
+
+    form.append(input, add, cancel);
+    return form;
   }
 
   function renderInput() {
@@ -1479,10 +1577,6 @@
       lastSyncedInput = text;
     }
 
-    refs.manualModeBtn.setAttribute("aria-current", currentRankMode() === "manual" ? "true" : "false");
-    refs.powerModeBtn.setAttribute("aria-current", currentRankMode() === "power" ? "true" : "false");
-    refs.powerContextBtn.classList.toggle("is-hidden", currentRankMode() !== "power");
-    refs.startBtn.textContent = currentRankMode() === "power" ? "Rank" : "Start";
     updateDraftCount();
   }
 
@@ -1516,7 +1610,6 @@
     const ranked = rankedTasks().filter((task) => !task.done);
     const topCount = clamp(state.topCount, 1, Math.max(1, ranked.length || state.topCount));
     state.topCount = topCount;
-    const powerMode = currentRankMode() === "power";
 
     refs.focusTitle.textContent = `Top ${topCount}`;
     refs.topCount.textContent = String(topCount);
@@ -1541,9 +1634,224 @@
       refs.allList.appendChild(createTaskRow(task, index + 1, task.done ? "restore" : "done"));
     });
 
-    refs.keepChoosing.textContent = powerMode ? "Context" : "Choose";
-    refs.keepChoosing.disabled = powerMode ? false : activeTasks().length < 2;
-    refs.resetRank.classList.toggle("is-hidden", powerMode);
+    refs.keepChoosing.textContent = "Choose";
+    refs.keepChoosing.disabled = activeTasks().length < 2;
+    refs.resetRank.classList.remove("is-hidden");
+  }
+
+  function objectiveChildren(parentId) {
+    return state.objectives
+      .filter((node) => (node.parentId || "") === (parentId || ""))
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  function objectiveMeta(node) {
+    const childCount = objectiveChildren(node.id).length;
+    const task = node.taskId ? findTask(node.taskId) : null;
+
+    if (task) {
+      if (task.done) {
+        return "Done";
+      }
+
+      const rank = taskRank(task.id);
+      return rank ? `Task #${rank}` : "Task";
+    }
+
+    if (node.kind === "task") {
+      return "Task";
+    }
+
+    return `${childCount} branch${childCount === 1 ? "" : "es"}`;
+  }
+
+  function addRootObjective(event) {
+    event.preventDefault();
+    const text = refs.objectiveRootInput.value.trim();
+    if (!text) {
+      return;
+    }
+
+    addObjective(text, "");
+    refs.objectiveRootInput.value = "";
+  }
+
+  function submitObjectiveChild(event) {
+    const form = event.target.closest(".objective-child-form");
+    if (!form) {
+      return;
+    }
+
+    event.preventDefault();
+    const input = form.querySelector("input");
+    const text = input.value.trim();
+    if (!text) {
+      input.focus();
+      return;
+    }
+
+    addObjective(text, form.dataset.parentId || "");
+  }
+
+  function handleObjectiveKeydown(event) {
+    if (event.key !== "Escape" || !event.target.closest(".objective-child-form")) {
+      return;
+    }
+
+    objectiveDraftParentId = null;
+    render();
+  }
+
+  function handleObjectiveAction(event) {
+    const button = event.target.closest("[data-action]");
+    if (!button) {
+      return;
+    }
+
+    const action = button.dataset.action;
+    if (action === "cancel-child") {
+      objectiveDraftParentId = null;
+      render();
+      return;
+    }
+
+    const node = findObjective(button.dataset.id);
+    if (!node) {
+      return;
+    }
+
+    if (action === "add-child") {
+      objectiveDraftParentId = node.id;
+      render();
+      window.setTimeout(() => document.getElementById("objectiveDraftInput")?.focus(), 0);
+      return;
+    }
+
+    if (action === "make-task") {
+      ensureTaskForObjective(node.id);
+      return;
+    }
+
+    if (action === "open-task") {
+      activeView = "focus";
+      render();
+      return;
+    }
+
+    if (action === "delete") {
+      deleteObjective(node.id);
+    }
+  }
+
+  function addObjective(text, parentId) {
+    state.objectives.push({
+      id: makeId(),
+      parentId: parentId || "",
+      text: text.replace(/\s+/g, " ").trim(),
+      kind: "objective",
+      taskId: "",
+      createdAt: Date.now() + Math.random()
+    });
+    objectiveDraftParentId = null;
+    saveState({ immediate: true });
+    render();
+  }
+
+  function deleteObjective(id) {
+    const removeIds = new Set([id]);
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+      state.objectives.forEach((node) => {
+        if (!removeIds.has(node.id) && removeIds.has(node.parentId)) {
+          removeIds.add(node.id);
+          changed = true;
+        }
+      });
+    }
+
+    state.objectives = state.objectives.filter((node) => !removeIds.has(node.id));
+    if (removeIds.has(objectiveDraftParentId)) {
+      objectiveDraftParentId = null;
+    }
+
+    saveState({ immediate: true });
+    render();
+  }
+
+  function ensureTaskForObjective(objectiveId) {
+    const node = findObjective(objectiveId);
+    if (!node) {
+      return null;
+    }
+
+    let task = node.taskId ? findTask(node.taskId) : null;
+    if (!task) {
+      task = state.tasks.find((item) => item.text.trim().toLowerCase() === node.text.toLowerCase());
+    }
+
+    if (!task) {
+      task = {
+        id: makeId(),
+        text: node.text,
+        justification: objectivePath(objectiveId).join(" / "),
+        score: 1000,
+        wins: 0,
+        losses: 0,
+        seen: 0,
+        done: false,
+        doneAt: null,
+        createdAt: Date.now() + Math.random()
+      };
+      state.tasks.push(task);
+    }
+
+    node.kind = "task";
+    node.taskId = task.id;
+    syncDraftFromTasks();
+    state.currentPair = null;
+    ensurePair();
+    saveState({ immediate: true });
+    render();
+    return task;
+  }
+
+  function syncDraftFromTasks() {
+    state.draftText = state.tasks.map((task) => task.text).join("\n");
+    lastSyncedInput = state.draftText;
+    if (document.activeElement !== refs.taskInput) {
+      refs.taskInput.value = state.draftText;
+    }
+  }
+
+  function findObjective(id) {
+    return state.objectives.find((node) => node.id === id);
+  }
+
+  function objectivePath(objectiveId) {
+    const byId = new Map(state.objectives.map((node) => [node.id, node]));
+    const path = [];
+    const seen = new Set();
+    let node = byId.get(objectiveId);
+
+    while (node && !seen.has(node.id)) {
+      path.unshift(node.text);
+      seen.add(node.id);
+      node = byId.get(node.parentId);
+    }
+
+    return path;
+  }
+
+  function objectivePathForTask(taskId) {
+    const node = state.objectives.find((item) => item.taskId === taskId);
+    return node ? objectivePath(node.id).slice(0, -1).join(" / ") : "";
+  }
+
+  function taskRank(taskId) {
+    const index = rankedTasks().findIndex((task) => task.id === taskId);
+    return index >= 0 ? index + 1 : null;
   }
 
   function renderReputation() {
@@ -1723,9 +2031,22 @@
     rankNode.className = "rank";
     rankNode.textContent = String(rank);
 
+    const main = document.createElement("span");
+    main.className = "task-main";
+
     const textNode = document.createElement("span");
     textNode.className = "task-text";
     textNode.textContent = task.text;
+
+    const pathText = objectivePathForTask(task.id);
+    if (pathText) {
+      const pathNode = document.createElement("span");
+      pathNode.className = "task-path";
+      pathNode.textContent = pathText;
+      main.append(textNode, pathNode);
+    } else {
+      main.appendChild(textNode);
+    }
 
     const actions = document.createElement("span");
     actions.className = "task-actions";
@@ -1745,7 +2066,7 @@
     button.textContent = action === "restore" ? "Undo" : "Done";
 
     actions.append(whyButton, button);
-    item.append(rankNode, textNode, actions);
+    item.append(rankNode, main, actions);
     return item;
   }
 
@@ -1792,9 +2113,6 @@
         id: makeId(),
         text,
         justification: "",
-        powerTime: 3,
-        powerMoney: 3,
-        powerEffort: 3,
         score: 1000,
         wins: 0,
         losses: 0,
@@ -1812,9 +2130,7 @@
     state.draftText = state.tasks.map((task) => task.text).join("\n");
     lastSyncedInput = state.draftText;
 
-    if (currentRankMode() === "power") {
-      activeView = "focus";
-    } else if (activeTasks().length > 1 && preferredView !== "focus") {
+    if (activeTasks().length > 1 && preferredView !== "focus") {
       startSprint();
       activeView = "choose";
     } else {
@@ -1982,11 +2298,6 @@
     whyTaskId = task.id;
     refs.whyTask.textContent = task.text;
     refs.whyInput.value = task.justification || "";
-    refs.whyTime.value = String(normalizePowerLevel(task.powerTime));
-    refs.whyMoney.value = String(normalizePowerLevel(task.powerMoney));
-    refs.whyEffort.value = String(normalizePowerLevel(task.powerEffort));
-    refs.whyPowerFields.classList.toggle("is-hidden", currentRankMode() !== "power");
-    updateWhyPowerRead();
 
     if (typeof refs.whyDialog.showModal === "function") {
       refs.whyDialog.showModal();
@@ -1998,27 +2309,6 @@
     whyTaskId = null;
     if (refs.whyDialog.open) {
       refs.whyDialog.close();
-    }
-  }
-
-  function openPowerDialog() {
-    const profile = state.reputation.profile;
-    refs.powerNorthStar.value = profile.powerNorthStar || "";
-    refs.powerDefinition.value = profile.powerDefinition || "";
-    refs.powerAssets.value = profile.powerAssets || "";
-    refs.powerConstraints.value = profile.powerConstraints || "";
-    refs.powerAvoid.value = profile.powerAvoid || "";
-    refs.powerHorizon.value = profile.powerHorizon || "2y";
-
-    if (typeof refs.powerDialog.showModal === "function") {
-      refs.powerDialog.showModal();
-      refs.powerNorthStar.focus();
-    }
-  }
-
-  function closePowerDialog() {
-    if (refs.powerDialog.open) {
-      refs.powerDialog.close();
     }
   }
 
@@ -2062,28 +2352,7 @@
     }
 
     task.justification = refs.whyInput.value.trim();
-    task.powerTime = normalizePowerLevel(refs.whyTime.value);
-    task.powerMoney = normalizePowerLevel(refs.whyMoney.value);
-    task.powerEffort = normalizePowerLevel(refs.whyEffort.value);
     closeWhyDialog();
-    saveState();
-    render();
-  }
-
-  function savePowerProfile(event) {
-    event.preventDefault();
-
-    state.reputation.profile = {
-      ...state.reputation.profile,
-      powerNorthStar: refs.powerNorthStar.value.trim(),
-      powerDefinition: refs.powerDefinition.value.trim(),
-      powerAssets: refs.powerAssets.value.trim(),
-      powerConstraints: refs.powerConstraints.value.trim(),
-      powerAvoid: refs.powerAvoid.value.trim(),
-      powerHorizon: normalizePowerHorizon(refs.powerHorizon.value)
-    };
-
-    closePowerDialog();
     saveState();
     render();
   }
@@ -2606,10 +2875,6 @@
   }
 
   function resetRank() {
-    if (currentRankMode() === "power") {
-      return;
-    }
-
     state.tasks.forEach((task) => {
       task.score = 1000;
       task.wins = 0;
@@ -2653,7 +2918,8 @@
         supporters: state.reputation.supporters.slice()
       }
     };
-    activeView = "input";
+    objectiveDraftParentId = null;
+    activeView = "map";
     lastSyncedInput = "";
     refs.taskInput.value = "";
     saveState();
@@ -2670,6 +2936,7 @@
     pendingSignal = null;
     activeInviteProfileId = null;
     pendingSupportDialog = false;
+    objectiveDraftParentId = null;
     lastSignalUrl = "";
     lastSyncedInput = "";
     refs.recoveryForm.reset();
@@ -2771,22 +3038,6 @@
   }
 
   function rankedTasks() {
-    if (currentRankMode() === "power") {
-      return state.tasks
-        .map((task) => ({
-          task,
-          powerScore: powerScoreForTask(task)
-        }))
-        .sort((a, b) => {
-          if (a.task.done !== b.task.done) {
-            return a.task.done ? 1 : -1;
-          }
-
-          return b.powerScore - a.powerScore || a.task.createdAt - b.task.createdAt;
-        })
-        .map((entry) => entry.task);
-    }
-
     return [...state.tasks].sort((a, b) => {
       if (a.done !== b.done) {
         return a.done ? 1 : -1;
@@ -2820,203 +3071,6 @@
         seen.add(key);
         return true;
       });
-  }
-
-  function normalizeRankMode(value) {
-    return value === "power" ? "power" : "manual";
-  }
-
-  function normalizePowerHorizon(value) {
-    return ["6m", "2y", "5y"].includes(value) ? value : "2y";
-  }
-
-  function normalizePowerLevel(value) {
-    const level = Number(value);
-    return level === 1 || level === 3 || level === 5 ? level : 3;
-  }
-
-  function updateWhyPowerRead() {
-    const task = findTask(whyTaskId);
-    const preview = {
-      ...(task || {}),
-      justification: refs.whyInput.value.trim(),
-      powerTime: normalizePowerLevel(refs.whyTime.value),
-      powerMoney: normalizePowerLevel(refs.whyMoney.value),
-      powerEffort: normalizePowerLevel(refs.whyEffort.value)
-    };
-
-    refs.whyPowerRead.textContent =
-      currentRankMode() === "power" ? powerReasonForTask(preview) : powerResourceSummary(preview);
-  }
-
-  function powerScoreForTask(task) {
-    return analyzePowerTask(task).score;
-  }
-
-  function powerReasonForTask(task) {
-    return analyzePowerTask(task).reason;
-  }
-
-  function analyzePowerTask(task) {
-    const profile = normalizeProfile(state.reputation.profile);
-    const content = [task?.text || "", task?.justification || ""].join(" ").toLowerCase();
-    const contextTerms = extractMeaningfulTerms(
-      [profile.powerNorthStar, profile.powerDefinition, profile.powerAssets].join(" ")
-    );
-    const assetTerms = extractMeaningfulTerms(profile.powerAssets);
-    const avoidTerms = extractMeaningfulTerms(profile.powerAvoid);
-    const powerWords = {
-      systems: ["system", "automate", "automation", "template", "workflow", "process", "tool", "script", "delegate", "document", "pipeline"],
-      assets: ["build", "create", "asset", "product", "offer", "brand", "portfolio", "list", "newsletter", "channel", "audience", "library"],
-      money: ["sell", "sales", "client", "customer", "invoice", "proposal", "pricing", "revenue", "cash", "lead", "outreach", "deal"],
-      distribution: ["publish", "post", "launch", "video", "youtube", "tiktok", "instagram", "podcast", "share", "email"],
-      learning: ["learn", "study", "practice", "train", "read", "research", "prototype", "test"],
-      relationships: ["call", "meet", "message", "reach out", "follow up", "follow-up", "network", "mentor", "partner", "collaborate", "hire"],
-      health: ["sleep", "exercise", "workout", "walk", "run", "gym", "meditate", "meal", "cook", "health"],
-      maintenance: ["clean", "tidy", "admin", "inbox", "errand", "chores", "shopping", "paperwork", "booking", "schedule", "meeting", "reply"],
-      drain: ["scroll", "doomscroll", "netflix", "tv", "game", "gaming", "browse"]
-    };
-    const hits = Object.fromEntries(
-      Object.entries(powerWords).map(([key, phrases]) => [key, countPhraseHits(content, phrases)])
-    );
-    const alignmentHits = countPhraseHits(content, contextTerms);
-    const assetHits = countPhraseHits(content, assetTerms);
-    const avoidHits = countPhraseHits(content, avoidTerms);
-    const horizon = normalizePowerHorizon(profile.powerHorizon);
-    const horizonWeight =
-      horizon === "6m"
-        ? { systems: 10, assets: 12, money: 18, distribution: 14, learning: 6, relationships: 10, health: 8 }
-        : horizon === "5y"
-          ? { systems: 18, assets: 16, money: 10, distribution: 8, learning: 14, relationships: 13, health: 16 }
-          : { systems: 15, assets: 14, money: 14, distribution: 11, learning: 10, relationships: 11, health: 12 };
-    const valueScore =
-      hits.systems * horizonWeight.systems +
-      hits.assets * horizonWeight.assets +
-      hits.money * horizonWeight.money +
-      hits.distribution * horizonWeight.distribution +
-      hits.learning * horizonWeight.learning +
-      hits.relationships * horizonWeight.relationships +
-      hits.health * horizonWeight.health +
-      alignmentHits * 8 +
-      assetHits * 6;
-    const sustainabilityScore = hits.systems * 7 + hits.learning * 5 + hits.relationships * 4 + hits.health * 7;
-    const maintenancePenalty = hits.maintenance * 10 + hits.drain * 18 + avoidHits * 12;
-    const powerTime = normalizePowerLevel(task?.powerTime);
-    const powerMoney = normalizePowerLevel(task?.powerMoney);
-    const powerEffort = normalizePowerLevel(task?.powerEffort);
-    const resourcePenalty = powerTime * 7 + powerMoney * 6 + powerEffort * 8;
-    const efficiencyBonus = powerTime + powerMoney + powerEffort <= 5 ? 12 : powerTime + powerMoney + powerEffort <= 8 ? 6 : 0;
-    const score = Math.round(
-      100 + valueScore + sustainabilityScore + efficiencyBonus - maintenancePenalty - resourcePenalty
-    );
-    const strongestTheme =
-      [
-        ["systems", hits.systems],
-        ["assets", hits.assets],
-        ["money", hits.money],
-        ["distribution", hits.distribution],
-        ["learning", hits.learning],
-        ["relationships", hits.relationships],
-        ["health", hits.health]
-      ].sort((a, b) => b[1] - a[1])[0][0];
-    const themeCopy = {
-      systems: "Compounding system.",
-      assets: "Builds an asset.",
-      money: "Strong payoff path.",
-      distribution: "Grows reach.",
-      learning: "Builds skill.",
-      relationships: "Expands relationships.",
-      health: "Protects energy."
-    };
-    const stance =
-      maintenancePenalty > valueScore
-        ? "Lower leverage."
-        : alignmentHits > 0
-          ? "Fits your direction."
-          : themeCopy[strongestTheme];
-    const reason = `${stance} ${powerResourceSummary({ powerTime, powerMoney, powerEffort })}`;
-
-    return { score, reason };
-  }
-
-  function powerResourceSummary(task) {
-    const bits = [
-      `Time ${powerLevelLabel(task?.powerTime)}`,
-      `money ${powerLevelLabel(task?.powerMoney)}`,
-      `effort ${powerLevelLabel(task?.powerEffort)}`
-    ];
-    return bits.join(", ") + ".";
-  }
-
-  function powerLevelLabel(value) {
-    const level = normalizePowerLevel(value);
-    if (level === 1) {
-      return "low";
-    }
-
-    if (level === 5) {
-      return "high";
-    }
-
-    return "medium";
-  }
-
-  function countPhraseHits(text, phrases) {
-    return phrases.reduce((count, phrase) => {
-      if (!phrase || phrase.length < 3) {
-        return count;
-      }
-
-      return text.includes(String(phrase).toLowerCase()) ? count + 1 : count;
-    }, 0);
-  }
-
-  function extractMeaningfulTerms(value) {
-    const stopwords = new Set([
-      "about",
-      "after",
-      "again",
-      "along",
-      "because",
-      "before",
-      "between",
-      "could",
-      "doing",
-      "from",
-      "have",
-      "into",
-      "long",
-      "make",
-      "more",
-      "most",
-      "need",
-      "only",
-      "over",
-      "same",
-      "should",
-      "some",
-      "than",
-      "that",
-      "them",
-      "then",
-      "there",
-      "these",
-      "they",
-      "this",
-      "want",
-      "with",
-      "your"
-    ]);
-
-    return Array.from(
-      new Set(
-        String(value || "")
-          .toLowerCase()
-          .split(/[^a-z0-9]+/)
-          .map((part) => part.trim())
-          .filter((part) => part.length >= 4 && !stopwords.has(part))
-      )
-    );
   }
 
   function isMissingColumnError(error) {
