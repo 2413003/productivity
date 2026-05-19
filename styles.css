@@ -624,9 +624,24 @@ summary:focus-visible {
   font-weight: 700;
 }
 
+.objective-action.icon-action {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
 .objective-action .control-icon {
   width: 18px;
   height: 18px;
+}
+
+.objective-action.icon-action .control-icon {
+  width: 19px;
+  height: 19px;
 }
 
 .objective-action.is-danger {
@@ -634,8 +649,23 @@ summary:focus-visible {
 }
 
 .objective-branch-actions.is-task-actions .objective-action.is-danger {
-  min-height: 28px;
+  min-height: 42px;
   background: var(--panel);
+}
+
+.objective-action[data-tooltip]::after {
+  top: auto;
+  bottom: calc(100% + 8px);
+  transform: translate(-50%, 3px);
+}
+
+.objective-action[data-tooltip]:hover::after,
+.objective-action[data-tooltip]:focus-visible::after {
+  transform: translate(-50%, 0);
+}
+
+.objective-item:has(> .objective-child-form) > .objective-node > .objective-branch-actions {
+  display: none;
 }
 
 .objective-child-form {

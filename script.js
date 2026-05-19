@@ -1572,7 +1572,7 @@
 
     if (!isLinked) {
       const addButton = document.createElement("button");
-      addButton.className = "objective-action";
+      addButton.className = "objective-action icon-action";
       addButton.type = "button";
       addButton.dataset.action = "add-child";
       addButton.dataset.id = node.id;
@@ -1584,20 +1584,24 @@
 
     if (!isLinked && !children.length) {
       const taskButton = document.createElement("button");
-      taskButton.className = "objective-action";
+      taskButton.className = "objective-action icon-action";
       taskButton.type = "button";
       taskButton.dataset.action = "make-task";
       taskButton.dataset.id = node.id;
-      taskButton.textContent = "Mark task";
+      taskButton.setAttribute("aria-label", "Mark task");
+      taskButton.dataset.tooltip = "Mark task";
+      taskButton.appendChild(createControlIcon("task"));
       actions.appendChild(taskButton);
     }
 
     const deleteButton = document.createElement("button");
-    deleteButton.className = "objective-action is-danger";
+    deleteButton.className = "objective-action icon-action is-danger";
     deleteButton.type = "button";
     deleteButton.dataset.action = "delete";
     deleteButton.dataset.id = node.id;
-    deleteButton.textContent = "Delete";
+    deleteButton.setAttribute("aria-label", "Delete");
+    deleteButton.dataset.tooltip = "Delete";
+    deleteButton.appendChild(createControlIcon("trash"));
 
     actions.appendChild(deleteButton);
     return actions;
@@ -2172,7 +2176,6 @@
     svg.setAttribute("aria-hidden", "true");
     svg.setAttribute("focusable", "false");
 
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     if (name === "plus") {
       const vertical = document.createElementNS("http://www.w3.org/2000/svg", "path");
       vertical.setAttribute("d", "M12 5v14");
@@ -2182,8 +2185,17 @@
       return svg;
     }
 
-    path.setAttribute("d", name === "check" ? "m5 12 4 4 10-10" : "");
-    svg.appendChild(path);
+    const paths = {
+      check: ["m5 12 4 4 10-10"],
+      task: ["M5 5h14v14H5z", "m8 9 2 2 4-4"],
+      trash: ["M4 7h16", "M10 11v6", "M14 11v6", "M6 7l1 13h10l1-13", "M9 7V5h6v2"]
+    };
+
+    (paths[name] || []).forEach((d) => {
+      const iconPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      iconPath.setAttribute("d", d);
+      svg.appendChild(iconPath);
+    });
     return svg;
   }
 
