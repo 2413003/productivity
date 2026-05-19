@@ -21,7 +21,6 @@
     objectiveTree: document.getElementById("objectiveTree"),
     objectiveCount: document.getElementById("objectiveCount"),
     objectiveStatus: document.getElementById("objectiveStatus"),
-    objectivePrioritizeBtn: document.getElementById("objectivePrioritizeBtn"),
     taskInput: document.getElementById("taskInput"),
     draftCount: document.getElementById("draftCount"),
     startBtn: document.getElementById("startBtn"),
@@ -155,8 +154,6 @@
     refs.objectiveTree?.addEventListener("click", handleObjectiveAction);
     refs.objectiveTree?.addEventListener("submit", submitObjectiveChild);
     refs.objectiveTree?.addEventListener("keydown", handleObjectiveKeydown);
-    refs.objectivePrioritizeBtn?.addEventListener("click", () => setView("choose"));
-
     refs.choiceA.addEventListener("click", () => chooseCurrent(0));
     refs.choiceB.addEventListener("click", () => chooseCurrent(1));
     refs.skipBtn.addEventListener("click", skipCurrent);
@@ -1479,7 +1476,7 @@
   }
 
   function renderMap() {
-    if (!refs.objectiveCount || !refs.objectiveStatus || !refs.objectivePrioritizeBtn || !refs.objectiveTree) {
+    if (!refs.objectiveCount || !refs.objectiveStatus || !refs.objectiveTree) {
       return;
     }
 
@@ -1490,9 +1487,6 @@
     refs.objectiveRootForm?.classList.toggle("is-hidden", !objectiveRootOpen);
     refs.objectiveCount.textContent = `${state.objectives.length} item${state.objectives.length === 1 ? "" : "s"}`;
     refs.objectiveStatus.textContent = linkedTasks ? `${linkedTasks} task${linkedTasks === 1 ? "" : "s"} linked` : "";
-    const canPrioritize = activeTasks().length >= 2;
-    refs.objectivePrioritizeBtn.disabled = !canPrioritize;
-    refs.objectivePrioritizeBtn.closest(".map-actions")?.classList.toggle("is-hidden", !canPrioritize);
     refs.objectiveTree.innerHTML = "";
 
     if (!roots.length) {
@@ -1584,7 +1578,7 @@
       addButton.dataset.id = node.id;
       addButton.setAttribute("aria-label", "Add step");
       addButton.dataset.tooltip = "Add step";
-      addButton.textContent = "+";
+      addButton.appendChild(createControlIcon("plus"));
       actions.appendChild(addButton);
     }
 
@@ -2179,6 +2173,15 @@
     svg.setAttribute("focusable", "false");
 
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    if (name === "plus") {
+      const vertical = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      vertical.setAttribute("d", "M12 5v14");
+      const horizontal = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      horizontal.setAttribute("d", "M5 12h14");
+      svg.append(vertical, horizontal);
+      return svg;
+    }
+
     path.setAttribute("d", name === "check" ? "m5 12 4 4 10-10" : "");
     svg.appendChild(path);
     return svg;

@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=plus-add">
+    <link rel="stylesheet" href="styles.css?v=map-plus-icon">
   </head>
   <body>
     <div class="shell">
@@ -73,15 +73,16 @@
               </div>
             </div>
 
-            <button class="map-add-trigger" type="button" id="objectiveRootToggle" aria-label="Add objective" data-tooltip="Add objective">+</button>
+            <button class="map-add-trigger icon-add" type="button" id="objectiveRootToggle" aria-label="Add objective" data-tooltip="Add objective">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 5v14" />
+                <path d="M5 12h14" />
+              </svg>
+            </button>
             <form class="map-form is-hidden" id="objectiveRootForm">
               <input id="objectiveRootInput" type="text" autocomplete="off" placeholder="New objective">
               <button class="primary" type="submit">Add</button>
             </form>
-
-            <div class="map-actions">
-              <button class="primary" type="button" id="objectivePrioritizeBtn">Prioritize tasks</button>
-            </div>
 
             <div class="map-canvas">
               <ul class="objective-list" id="objectiveTree"></ul>
@@ -377,6 +378,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=plus-add"></script>
+    <script src="script.js?v=map-plus-icon"></script>
   </body>
 </html>

@@ -381,21 +381,24 @@ summary:focus-visible {
 
 .map-add-trigger {
   position: relative;
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
-  min-height: 32px;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
   border-radius: 7px;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.58);
   color: var(--muted);
   padding: 0;
-  font-size: 1.05rem;
-  font-weight: 800;
-  text-align: center;
+  transition: background 140ms ease, color 140ms ease, transform 140ms ease;
 }
 
 .map-add-trigger:hover {
+  background: var(--panel);
   color: var(--ink);
+  transform: translateY(-1px);
 }
 
 .map-add-trigger::after,
@@ -443,13 +446,6 @@ summary:focus-visible {
   background: var(--panel);
   color: var(--ink);
   padding: 0 12px;
-}
-
-.map-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
 }
 
 .map-canvas {
@@ -617,8 +613,8 @@ summary:focus-visible {
 
 .objective-action {
   position: relative;
-  min-width: 30px;
-  min-height: 30px;
+  min-width: 34px;
+  min-height: 34px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.68);
@@ -626,6 +622,11 @@ summary:focus-visible {
   padding: 0 10px;
   font-size: 0.76rem;
   font-weight: 700;
+}
+
+.objective-action .control-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .objective-action.is-danger {
@@ -1321,15 +1322,6 @@ h2 {
 
   .objective-child-form {
     margin-left: 28px;
-  }
-
-  .map-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .map-actions button {
-    width: 100%;
   }
 
   .compose-actions {
