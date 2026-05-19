@@ -161,6 +161,59 @@ summary:focus-visible {
   stroke-width: 2;
 }
 
+.icon-control {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  min-height: 42px;
+  padding: 0;
+}
+
+.icon-control::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  z-index: 20;
+  min-width: max-content;
+  border-radius: 6px;
+  background: var(--ink);
+  color: white;
+  padding: 5px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.icon-control:hover::after,
+.icon-control:focus::after,
+.icon-control:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.control-icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.control-icon circle {
+  fill: currentColor;
+  stroke: none;
+}
+
 .stage {
   flex: 1;
   display: grid;
@@ -585,6 +638,12 @@ button:disabled {
   background: rgba(255, 255, 255, 0.55);
 }
 
+.primary.icon-control,
+.subtle.icon-control,
+.row-action.icon-control {
+  padding: 0;
+}
+
 .sprint {
   min-height: 30px;
   gap: 12px;
@@ -795,6 +854,14 @@ h2 {
   font-weight: 700;
 }
 
+.row-action.icon-control {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  min-height: 42px;
+  padding: 0;
+}
+
 .task-actions {
   display: flex;
   align-items: center;
@@ -841,8 +908,17 @@ h2 {
   margin-top: 18px;
 }
 
+.focus > .focus-actions {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .focus-actions button {
   flex: 1;
+}
+
+.focus-actions button.icon-control {
+  flex: 0 0 42px;
 }
 
 .options {
@@ -858,6 +934,16 @@ h2 {
   cursor: pointer;
   font-size: 0.86rem;
   font-weight: 700;
+}
+
+.options > summary.icon-control {
+  width: 42px;
+  min-width: 42px;
+  list-style: none;
+}
+
+.options > summary.icon-control::-webkit-details-marker {
+  display: none;
 }
 
 .option-actions {

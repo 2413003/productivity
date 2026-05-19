@@ -1700,7 +1700,8 @@
       refs.allList.appendChild(createTaskRow(task, index + 1, task.done ? "restore" : "done"));
     });
 
-    refs.keepChoosing.textContent = "Choose";
+    refs.keepChoosing.setAttribute("aria-label", "Choose");
+    refs.keepChoosing.dataset.tooltip = "Choose";
     refs.keepChoosing.disabled = activeTasks().length < 2;
     refs.resetRank.classList.remove("is-hidden");
   }
@@ -2155,11 +2156,31 @@
     button.type = "button";
     button.dataset.action = action;
     button.dataset.id = task.id;
-    button.textContent = action === "restore" ? "Undo" : "Done";
+    if (action === "restore") {
+      button.textContent = "Undo";
+    } else {
+      button.classList.add("icon-control");
+      button.setAttribute("aria-label", "Done");
+      button.dataset.tooltip = "Done";
+      button.appendChild(createControlIcon("check"));
+    }
 
     actions.append(whyButton, button);
     item.append(rankNode, main, actions);
     return item;
+  }
+
+  function createControlIcon(name) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "control-icon");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", name === "check" ? "m5 12 4 4 10-10" : "");
+    svg.appendChild(path);
+    return svg;
   }
 
   function updateDraftCount() {
