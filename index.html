@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=hover-delete">
+    <link rel="stylesheet" href="styles.css?v=minimal-map">
   </head>
   <body>
     <div class="shell">
@@ -66,23 +66,22 @@
         <section class="screen" data-screen="map" aria-labelledby="map-title">
           <div class="map">
             <div class="map-head">
-              <div>
-                <p class="kicker">Map</p>
-                <h1 id="map-title">Objectives</h1>
+              <h1 id="map-title">Objectives</h1>
+              <div class="map-meta" aria-live="polite">
+                <output id="objectiveCount">0 items</output>
+                <output id="objectiveStatus"></output>
               </div>
-              <output id="objectiveCount" aria-live="polite">0 items</output>
             </div>
 
-            <form class="map-form" id="objectiveRootForm">
+            <button class="map-add-trigger" type="button" id="objectiveRootToggle">+ objective</button>
+            <form class="map-form is-hidden" id="objectiveRootForm">
               <input id="objectiveRootInput" type="text" autocomplete="off" placeholder="New objective">
               <button class="primary" type="submit">Add</button>
             </form>
 
             <div class="map-actions">
               <button class="primary" type="button" id="objectivePrioritizeBtn">Prioritize tasks</button>
-              <button class="subtle" type="button" data-view-button="focus">Top</button>
             </div>
-            <output class="map-status" id="objectiveStatus" aria-live="polite"></output>
 
             <div class="map-canvas">
               <ul class="objective-list" id="objectiveTree"></ul>
@@ -359,6 +358,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=hover-delete"></script>
+    <script src="script.js?v=minimal-map"></script>
   </body>
 </html>

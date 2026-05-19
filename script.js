@@ -15,6 +15,7 @@
   const refs = {
     screens: Array.from(document.querySelectorAll("[data-screen]")),
     viewButtons: Array.from(document.querySelectorAll("[data-view-button]")),
+    objectiveRootToggle: document.getElementById("objectiveRootToggle"),
     objectiveRootForm: document.getElementById("objectiveRootForm"),
     objectiveRootInput: document.getElementById("objectiveRootInput"),
     objectiveTree: document.getElementById("objectiveTree"),
@@ -132,6 +133,7 @@
   let lastSignalUrl = "";
   let objectiveDraftParentId = null;
   let selectedObjectiveId = null;
+  let objectiveRootOpen = false;
   let cloudSchema = {
     profileDraft: null,
     profileObjectives: null,
@@ -147,7 +149,9 @@
 
     refs.taskInput.addEventListener("input", saveDraftInput);
     refs.startBtn.addEventListener("click", () => applyTasks("choose"));
+    refs.objectiveRootToggle?.addEventListener("click", openRootObjectiveForm);
     refs.objectiveRootForm?.addEventListener("submit", addRootObjective);
+    refs.objectiveRootForm?.addEventListener("keydown", handleObjectiveKeydown);
     refs.objectiveTree?.addEventListener("click", handleObjectiveAction);
     refs.objectiveTree?.addEventListener("submit", submitObjectiveChild);
     refs.objectiveTree?.addEventListener("keydown", handleObjectiveKeydown);
@@ -1482,9 +1486,13 @@
     const roots = objectiveChildren("");
     const linkedTasks = state.objectives.filter((node) => node.taskId && findTask(node.taskId)).length;
 
+    refs.objectiveRootToggle?.classList.toggle("is-hidden", objectiveRootOpen);
+    refs.objectiveRootForm?.classList.toggle("is-hidden", !objectiveRootOpen);
     refs.objectiveCount.textContent = `${state.objectives.length} item${state.objectives.length === 1 ? "" : "s"}`;
     refs.objectiveStatus.textContent = linkedTasks ? `${linkedTasks} task${linkedTasks === 1 ? "" : "s"} linked` : "";
-    refs.objectivePrioritizeBtn.disabled = activeTasks().length < 2;
+    const canPrioritize = activeTasks().length >= 2;
+    refs.objectivePrioritizeBtn.disabled = !canPrioritize;
+    refs.objectivePrioritizeBtn.closest(".map-actions")?.classList.toggle("is-hidden", !canPrioritize);
     refs.objectiveTree.innerHTML = "";
 
     if (!roots.length) {
@@ -1495,8 +1503,8 @@
       return;
     }
 
-    if (!findObjective(selectedObjectiveId)) {
-      selectedObjectiveId = roots[0]?.id || null;
+    if (selectedObjectiveId && !findObjective(selectedObjectiveId)) {
+      selectedObjectiveId = null;
     }
 
     roots.forEach((node) => {
@@ -1540,17 +1548,11 @@
 
     main.append(title, meta);
 
-    const state = document.createElement("span");
-    state.className = "objective-state";
-    state.textContent = isLinkedTask ? "Task" : "";
-
-    pick.append(marker, main, state);
+    pick.append(marker, main);
     row.appendChild(pick);
     item.appendChild(row);
 
-    if (selectedObjectiveId === node.id || isLinkedTask) {
-      item.appendChild(createObjectiveActions(node));
-    }
+    item.appendChild(createObjectiveActions(node));
 
     if (objectiveDraftParentId === node.id) {
       item.appendChild(createObjectiveDraftForm(node.id));
@@ -1729,15 +1731,24 @@
     return childCount ? `${childCount} step${childCount === 1 ? "" : "s"}` : "Step";
   }
 
+  function openRootObjectiveForm() {
+    objectiveRootOpen = true;
+    renderMap();
+    window.setTimeout(() => refs.objectiveRootInput?.focus(), 0);
+  }
+
   function addRootObjective(event) {
     event.preventDefault();
     const text = refs.objectiveRootInput.value.trim();
     if (!text) {
+      refs.objectiveRootInput.focus();
       return;
     }
 
     addObjective(text, "");
     refs.objectiveRootInput.value = "";
+    objectiveRootOpen = false;
+    renderMap();
   }
 
   function submitObjectiveChild(event) {
@@ -1758,12 +1769,21 @@
   }
 
   function handleObjectiveKeydown(event) {
-    if (event.key !== "Escape" || !event.target.closest(".objective-child-form")) {
+    if (event.key !== "Escape") {
       return;
     }
 
-    objectiveDraftParentId = null;
-    render();
+    if (event.target.closest(".objective-child-form")) {
+      objectiveDraftParentId = null;
+      render();
+      return;
+    }
+
+    if (event.target.closest("#objectiveRootForm")) {
+      objectiveRootOpen = false;
+      refs.objectiveRootInput.value = "";
+      renderMap();
+    }
   }
 
   function handleObjectiveAction(event) {
@@ -2992,6 +3012,7 @@
     };
     objectiveDraftParentId = null;
     selectedObjectiveId = null;
+    objectiveRootOpen = false;
     activeView = "map";
     lastSyncedInput = "";
     refs.taskInput.value = "";
@@ -3011,6 +3032,7 @@
     pendingSupportDialog = false;
     objectiveDraftParentId = null;
     selectedObjectiveId = null;
+    objectiveRootOpen = false;
     lastSignalUrl = "";
     lastSyncedInput = "";
     refs.recoveryForm.reset();

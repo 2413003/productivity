@@ -305,6 +305,35 @@ summary:focus-visible {
   font-size: clamp(2.4rem, 6vw, 3.6rem);
 }
 
+.map-meta {
+  display: grid;
+  gap: 3px;
+  text-align: right;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.map-head:hover .map-meta,
+.map-head:focus-within .map-meta {
+  opacity: 1;
+}
+
+.map-add-trigger {
+  min-height: 32px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.map-add-trigger:hover {
+  color: var(--ink);
+}
+
 .map-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -328,15 +357,6 @@ summary:focus-visible {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-}
-
-.map-status {
-  display: block;
-  min-height: 18px;
-  margin-top: 10px;
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 700;
 }
 
 .map-canvas {
@@ -384,7 +404,7 @@ summary:focus-visible {
   min-width: 0;
   width: 100%;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   border: 0;
@@ -449,27 +469,22 @@ summary:focus-visible {
 }
 
 .objective-state {
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
-  border-radius: 6px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  padding: 3px 6px;
-  font-size: 0.74rem;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.objective-state:empty {
   display: none;
 }
 
 .objective-branch-actions {
-  display: flex;
+  display: none;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
   margin: -2px 0 8px 36px;
   padding: 4px 0 2px;
+}
+
+.objective-item:hover > .objective-branch-actions,
+.objective-item:focus-within:not(.is-task-item) > .objective-branch-actions,
+.objective-item.is-selected:not(.is-task-item) > .objective-branch-actions {
+  display: flex;
 }
 
 .objective-branch-actions.is-task-actions {
@@ -484,10 +499,6 @@ summary:focus-visible {
 
 .objective-item.is-task-item:hover > .objective-branch-actions.is-task-actions {
   display: flex;
-}
-
-.objective-item.is-task-item:hover > .objective-node .objective-state {
-  opacity: 0;
 }
 
 .objective-action {
