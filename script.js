@@ -1583,13 +1583,13 @@
       actions.appendChild(addButton);
     }
 
-    if (isLinked || !children.length) {
+    if (!isLinked && !children.length) {
       const taskButton = document.createElement("button");
-      taskButton.className = `objective-action${isLinked ? " is-linked" : ""}`;
+      taskButton.className = "objective-action";
       taskButton.type = "button";
-      taskButton.dataset.action = isLinked ? "open-task" : "make-task";
+      taskButton.dataset.action = "make-task";
       taskButton.dataset.id = node.id;
-      taskButton.textContent = isLinked ? "Open task" : "Mark task";
+      taskButton.textContent = "Mark task";
       actions.appendChild(taskButton);
     }
 
@@ -1798,12 +1798,6 @@
 
     if (action === "make-task") {
       ensureTaskForObjective(node.id);
-      return;
-    }
-
-    if (action === "open-task") {
-      activeView = "focus";
-      render();
       return;
     }
 

@@ -85,9 +85,9 @@ summary:focus-visible {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.62);
+  overflow: visible;
 }
 
-.nav button,
 .quiet-row button,
 .subtle,
 .stepper button,
@@ -102,9 +102,63 @@ summary:focus-visible {
   transition: background 160ms ease, color 160ms ease, transform 160ms ease;
 }
 
+.nav button {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.nav button:hover {
+  background: rgba(21, 23, 19, 0.06);
+}
+
 .nav button[aria-current="page"] {
   background: var(--ink);
   color: white;
+}
+
+.nav button::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  z-index: 20;
+  min-width: max-content;
+  border-radius: 6px;
+  background: var(--ink);
+  color: white;
+  padding: 5px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.nav button:hover::after,
+.nav button:focus::after,
+.nav button:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.nav-icon {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .stage {
@@ -427,12 +481,6 @@ summary:focus-visible {
   padding: 0 10px;
   font-size: 0.76rem;
   font-weight: 700;
-}
-
-.objective-action.is-linked {
-  border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
-  background: var(--accent-soft);
-  color: var(--accent);
 }
 
 .objective-action.is-danger {

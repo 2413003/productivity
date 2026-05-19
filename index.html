@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=map-outline">
+    <link rel="stylesheet" href="styles.css?v=nav-icons">
   </head>
   <body>
     <div class="shell">
@@ -18,11 +18,47 @@
           Do
         </button>
         <nav class="nav" aria-label="Primary">
-          <button type="button" data-view-button="map">Map</button>
-          <button type="button" data-view-button="input">Tasks</button>
-          <button type="button" data-view-button="choose">Choose</button>
-          <button type="button" data-view-button="focus">Top</button>
-          <button type="button" data-view-button="reputation">Profile</button>
+          <button type="button" data-view-button="map" aria-label="Map" data-tooltip="Map">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 5v5" />
+              <path d="M7 15h10" />
+              <path d="M7 15v4" />
+              <path d="M17 15v4" />
+              <circle cx="12" cy="4" r="2" />
+              <circle cx="7" cy="20" r="2" />
+              <circle cx="17" cy="20" r="2" />
+            </svg>
+          </button>
+          <button type="button" data-view-button="input" aria-label="Tasks" data-tooltip="Tasks">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M9 6h10" />
+              <path d="M9 12h10" />
+              <path d="M9 18h10" />
+              <path d="m4 6 1.2 1.2L7.5 5" />
+              <path d="m4 12 1.2 1.2L7.5 11" />
+              <path d="m4 18 1.2 1.2L7.5 17" />
+            </svg>
+          </button>
+          <button type="button" data-view-button="choose" aria-label="Choose" data-tooltip="Choose">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M5 7h14" />
+              <path d="m15 3 4 4-4 4" />
+              <path d="M19 17H5" />
+              <path d="m9 13-4 4 4 4" />
+            </svg>
+          </button>
+          <button type="button" data-view-button="focus" aria-label="Top" data-tooltip="Top">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 19V5" />
+              <path d="m6 11 6-6 6 6" />
+            </svg>
+          </button>
+          <button type="button" data-view-button="reputation" aria-label="Profile" data-tooltip="Profile">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M5 21a7 7 0 0 1 14 0" />
+            </svg>
+          </button>
         </nav>
       </header>
 
@@ -323,6 +359,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=map-outline"></script>
+    <script src="script.js?v=nav-icons"></script>
   </body>
 </html>
