@@ -144,9 +144,17 @@ summary:focus-visible {
   transition: opacity 120ms ease, transform 120ms ease;
 }
 
-.nav button:hover::after,
-.nav button:focus::after,
 .nav button:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.nav:hover button:focus-visible::after {
+  opacity: 0;
+  transform: translate(-50%, -3px);
+}
+
+.nav button:hover::after {
   opacity: 1;
   transform: translate(-50%, 0);
 }
@@ -193,7 +201,6 @@ summary:focus-visible {
 }
 
 .icon-control:hover::after,
-.icon-control:focus::after,
 .icon-control:focus-visible::after {
   opacity: 1;
   transform: translate(-50%, 0);
@@ -445,6 +452,7 @@ summary:focus-visible {
 }
 
 .objective-node {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
@@ -542,35 +550,35 @@ summary:focus-visible {
 
 .objective-branch-actions {
   display: none;
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  z-index: 2;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  margin: -2px 0 8px 36px;
-  padding: 4px 0 2px;
+  margin: 0;
+  padding: 0;
+  transform: translateY(-50%);
 }
 
-.objective-item:not(.is-task-item) > .objective-node:hover + .objective-branch-actions,
-.objective-item:not(.is-task-item) > .objective-node:focus-within + .objective-branch-actions,
-.objective-item.is-selected:not(.is-task-item) > .objective-branch-actions {
+.objective-item:not(.is-task-item) > .objective-node:hover > .objective-branch-actions,
+.objective-item:not(.is-task-item) > .objective-node:focus-within > .objective-branch-actions,
+.objective-item.is-selected:not(.is-task-item) > .objective-node > .objective-branch-actions {
   display: flex;
 }
 
-.objective-item.is-selected:not(.is-task-item):has(.objective-item:hover) > .objective-branch-actions,
-.objective-item.is-selected:not(.is-task-item):has(.objective-item:focus-within) > .objective-branch-actions {
+.objective-item.is-selected:not(.is-task-item):has(.objective-item:hover) > .objective-node > .objective-branch-actions,
+.objective-item.is-selected:not(.is-task-item):has(.objective-item:focus-within) > .objective-node > .objective-branch-actions {
   display: none;
 }
 
 .objective-branch-actions.is-task-actions {
   display: none;
-  position: absolute;
-  top: 11px;
-  right: 8px;
-  z-index: 2;
-  margin: 0;
-  padding: 0;
 }
 
-.objective-item.is-task-item:hover > .objective-branch-actions.is-task-actions {
+.objective-item.is-task-item > .objective-node:hover > .objective-branch-actions.is-task-actions,
+.objective-item.is-task-item > .objective-node:focus-within > .objective-branch-actions.is-task-actions {
   display: flex;
 }
 
@@ -1276,7 +1284,6 @@ h2 {
     justify-self: start;
   }
 
-  .objective-branch-actions,
   .objective-child-form {
     margin-left: 28px;
   }

@@ -1550,9 +1550,8 @@
 
     pick.append(marker, main);
     row.appendChild(pick);
+    row.appendChild(createObjectiveActions(node));
     item.appendChild(row);
-
-    item.appendChild(createObjectiveActions(node));
 
     if (objectiveDraftParentId === node.id) {
       item.appendChild(createObjectiveDraftForm(node.id));
