@@ -131,6 +131,7 @@
   let pendingSupportDialog = false;
   let lastSignalUrl = "";
   let objectiveDraftParentId = null;
+  let selectedObjectiveId = null;
   let cloudSchema = {
     profileDraft: null,
     profileObjectives: null,
@@ -1481,17 +1482,21 @@
     const roots = objectiveChildren("");
     const linkedTasks = state.objectives.filter((node) => node.taskId && findTask(node.taskId)).length;
 
-    refs.objectiveCount.textContent = `Branches: ${state.objectives.length}`;
-    refs.objectiveStatus.textContent = `Tasks: ${linkedTasks}`;
+    refs.objectiveCount.textContent = `${state.objectives.length} item${state.objectives.length === 1 ? "" : "s"}`;
+    refs.objectiveStatus.textContent = linkedTasks ? `${linkedTasks} task${linkedTasks === 1 ? "" : "s"} linked` : "";
     refs.objectivePrioritizeBtn.disabled = activeTasks().length < 2;
     refs.objectiveTree.innerHTML = "";
 
     if (!roots.length) {
       const empty = document.createElement("li");
       empty.className = "empty";
-      empty.textContent = "Add an objective";
+      empty.textContent = "Add your first objective";
       refs.objectiveTree.appendChild(empty);
       return;
+    }
+
+    if (!findObjective(selectedObjectiveId)) {
+      selectedObjectiveId = roots[0]?.id || null;
     }
 
     roots.forEach((node) => {
@@ -1503,9 +1508,22 @@
     const item = document.createElement("li");
     item.className = "objective-item";
     item.style.animationDelay = `${Math.min(depth, 7) * 24}ms`;
+    item.style.setProperty("--depth", depth);
 
     const row = document.createElement("div");
     row.className = "objective-node";
+
+    const isLinkedTask = Boolean(node.taskId && findTask(node.taskId));
+    const pick = document.createElement("button");
+    pick.className = `objective-pick${isLinkedTask ? " is-task" : ""}`;
+    pick.type = "button";
+    pick.dataset.action = "select";
+    pick.dataset.id = node.id;
+    pick.setAttribute("aria-current", selectedObjectiveId === node.id ? "true" : "false");
+
+    const marker = document.createElement("span");
+    marker.className = "objective-marker";
+    marker.setAttribute("aria-hidden", "true");
 
     const main = document.createElement("span");
     main.className = "objective-main";
@@ -1520,38 +1538,17 @@
 
     main.append(title, meta);
 
-    const actions = document.createElement("span");
-    actions.className = "objective-actions";
+    const state = document.createElement("span");
+    state.className = "objective-state";
+    state.textContent = isLinkedTask ? "Task" : "";
 
-    const addButton = document.createElement("button");
-    addButton.className = "objective-action";
-    addButton.type = "button";
-    addButton.dataset.action = "add-child";
-    addButton.dataset.id = node.id;
-    addButton.title = "Add branch";
-    addButton.setAttribute("aria-label", `Add branch to ${node.text}`);
-    addButton.textContent = "+";
-
-    const taskButton = document.createElement("button");
-    taskButton.className = `objective-action${node.taskId && findTask(node.taskId) ? " is-linked" : ""}`;
-    taskButton.type = "button";
-    taskButton.dataset.action = node.taskId && findTask(node.taskId) ? "open-task" : "make-task";
-    taskButton.dataset.id = node.id;
-    taskButton.title = node.taskId && findTask(node.taskId) ? "View task" : "Make task";
-    taskButton.textContent = "Task";
-
-    const deleteButton = document.createElement("button");
-    deleteButton.className = "objective-action is-danger";
-    deleteButton.type = "button";
-    deleteButton.dataset.action = "delete";
-    deleteButton.dataset.id = node.id;
-    deleteButton.title = "Delete branch";
-    deleteButton.setAttribute("aria-label", `Delete ${node.text}`);
-    deleteButton.textContent = "x";
-
-    actions.append(addButton, taskButton, deleteButton);
-    row.append(main, actions);
+    pick.append(marker, main, state);
+    row.appendChild(pick);
     item.appendChild(row);
+
+    if (selectedObjectiveId === node.id) {
+      item.appendChild(createObjectiveActions(node));
+    }
 
     if (objectiveDraftParentId === node.id) {
       item.appendChild(createObjectiveDraftForm(node.id));
@@ -1570,6 +1567,43 @@
     return item;
   }
 
+  function createObjectiveActions(node) {
+    const actions = document.createElement("div");
+    actions.className = "objective-branch-actions";
+    const children = objectiveChildren(node.id);
+    const isLinked = Boolean(node.taskId && findTask(node.taskId));
+
+    if (!isLinked) {
+      const addButton = document.createElement("button");
+      addButton.className = "objective-action";
+      addButton.type = "button";
+      addButton.dataset.action = "add-child";
+      addButton.dataset.id = node.id;
+      addButton.textContent = "Add step";
+      actions.appendChild(addButton);
+    }
+
+    if (isLinked || !children.length) {
+      const taskButton = document.createElement("button");
+      taskButton.className = `objective-action${isLinked ? " is-linked" : ""}`;
+      taskButton.type = "button";
+      taskButton.dataset.action = isLinked ? "open-task" : "make-task";
+      taskButton.dataset.id = node.id;
+      taskButton.textContent = isLinked ? "Open task" : "Mark task";
+      actions.appendChild(taskButton);
+    }
+
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "objective-action is-danger";
+    deleteButton.type = "button";
+    deleteButton.dataset.action = "delete";
+    deleteButton.dataset.id = node.id;
+    deleteButton.textContent = "Delete";
+
+    actions.appendChild(deleteButton);
+    return actions;
+  }
+
   function createObjectiveDraftForm(parentId) {
     const form = document.createElement("form");
     form.className = "objective-child-form";
@@ -1579,12 +1613,12 @@
     input.id = "objectiveDraftInput";
     input.type = "text";
     input.autocomplete = "off";
-    input.placeholder = "Branch";
+    input.placeholder = "Step or task";
 
     const add = document.createElement("button");
     add.className = "primary";
     add.type = "submit";
-    add.textContent = "Add";
+    add.textContent = "Add step";
 
     const cancel = document.createElement("button");
     cancel.className = "subtle";
@@ -1683,14 +1717,14 @@
       }
 
       const rank = taskRank(task.id);
-      return rank ? `Task #${rank}` : "Task";
+      return rank ? `Priority #${rank}` : "Task";
     }
 
     if (node.kind === "task") {
       return "Task";
     }
 
-    return `${childCount} branch${childCount === 1 ? "" : "es"}`;
+    return childCount ? `${childCount} step${childCount === 1 ? "" : "s"}` : "Step";
   }
 
   function addRootObjective(event) {
@@ -1737,6 +1771,12 @@
     }
 
     const action = button.dataset.action;
+    if (action === "select") {
+      selectedObjectiveId = button.dataset.id || null;
+      render();
+      return;
+    }
+
     if (action === "cancel-child") {
       objectiveDraftParentId = null;
       render();
@@ -1749,6 +1789,7 @@
     }
 
     if (action === "add-child") {
+      selectedObjectiveId = node.id;
       objectiveDraftParentId = node.id;
       render();
       window.setTimeout(() => document.getElementById("objectiveDraftInput")?.focus(), 0);
@@ -1772,20 +1813,23 @@
   }
 
   function addObjective(text, parentId) {
+    const id = makeId();
     state.objectives.push({
-      id: makeId(),
+      id,
       parentId: parentId || "",
       text: text.replace(/\s+/g, " ").trim(),
       kind: "objective",
       taskId: "",
       createdAt: Date.now() + Math.random()
     });
+    selectedObjectiveId = id;
     objectiveDraftParentId = null;
     saveState({ immediate: true });
     render();
   }
 
   function deleteObjective(id) {
+    const deleted = findObjective(id);
     const removeIds = new Set([id]);
     let changed = true;
 
@@ -1802,6 +1846,9 @@
     state.objectives = state.objectives.filter((node) => !removeIds.has(node.id));
     if (removeIds.has(objectiveDraftParentId)) {
       objectiveDraftParentId = null;
+    }
+    if (removeIds.has(selectedObjectiveId)) {
+      selectedObjectiveId = deleted?.parentId || state.objectives[0]?.id || null;
     }
 
     saveState({ immediate: true });
@@ -1837,6 +1884,7 @@
 
     node.kind = "task";
     node.taskId = task.id;
+    selectedObjectiveId = node.id;
     syncDraftFromTasks();
     state.currentPair = null;
     ensurePair();
@@ -2947,6 +2995,7 @@
       }
     };
     objectiveDraftParentId = null;
+    selectedObjectiveId = null;
     activeView = "map";
     lastSyncedInput = "";
     refs.taskInput.value = "";
@@ -2965,6 +3014,7 @@
     activeInviteProfileId = null;
     pendingSupportDialog = false;
     objectiveDraftParentId = null;
+    selectedObjectiveId = null;
     lastSignalUrl = "";
     lastSyncedInput = "";
     refs.recoveryForm.reset();

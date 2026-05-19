@@ -239,22 +239,29 @@ summary:focus-visible {
 
 .map {
   align-self: start;
+  width: min(100%, 820px);
 }
 
 .map-head {
+  align-items: flex-end;
   margin-bottom: clamp(18px, 4vw, 28px);
+}
+
+.map h1 {
+  font-size: clamp(2.4rem, 6vw, 3.6rem);
 }
 
 .map-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
+  margin-bottom: 10px;
 }
 
 .map-form input,
 .objective-child-form input {
   width: 100%;
-  min-height: 46px;
+  min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -267,15 +274,14 @@ summary:focus-visible {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 12px;
 }
 
 .map-status {
   display: block;
-  min-height: 20px;
+  min-height: 18px;
   margin-top: 10px;
   color: var(--muted);
-  font-size: 0.84rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
@@ -283,19 +289,18 @@ summary:focus-visible {
   margin-top: 18px;
   overflow-x: auto;
   border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
 }
 
 .objective-list {
-  min-width: min(100%, 580px);
+  min-width: min(100%, 620px);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .objective-list .objective-list {
-  margin-left: clamp(20px, 4vw, 42px);
-  padding-left: 16px;
+  margin-left: 22px;
+  padding-left: 18px;
   border-left: 1px solid var(--line);
 }
 
@@ -314,22 +319,58 @@ summary:focus-visible {
 
 .objective-node {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
-  min-height: 58px;
-  border-top: 1px solid var(--line);
+  min-height: 40px;
+  margin: 2px 0;
   animation: rowIn 220ms ease both;
 }
 
-.objective-list > .objective-item:first-child > .objective-node {
-  border-top: 0;
+.objective-pick {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  padding: 7px 8px;
+  text-align: left;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.objective-pick:hover {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.objective-pick[aria-current="true"] {
+  background: color-mix(in srgb, var(--accent) 10%, white);
+  color: var(--accent);
+}
+
+.objective-marker {
+  width: 10px;
+  height: 10px;
+  justify-self: center;
+  border: 2px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.objective-pick.is-task .objective-marker {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .objective-main {
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .objective-title {
@@ -348,22 +389,44 @@ summary:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.objective-actions {
+.objective-pick[aria-current="true"] .objective-title,
+.objective-pick[aria-current="true"] .objective-meta {
+  color: inherit;
+}
+
+.objective-state {
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 3px 6px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.objective-state:empty {
+  display: none;
+}
+
+.objective-branch-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+  margin: -2px 0 8px 36px;
+  padding: 4px 0 2px;
 }
 
 .objective-action {
-  min-width: 36px;
-  min-height: 34px;
+  min-height: 30px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.58);
+  background: rgba(255, 255, 255, 0.68);
   color: var(--muted);
-  padding: 0 9px;
-  font-size: 0.78rem;
-  font-weight: 800;
+  padding: 0 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
 }
 
 .objective-action.is-linked {
@@ -380,7 +443,8 @@ summary:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
-  padding: 0 0 10px clamp(20px, 4vw, 42px);
+  margin: 0 0 10px 36px;
+  padding: 0;
 }
 
 .primary {
@@ -411,6 +475,12 @@ summary:focus-visible {
 .stepper button:active,
 .option-actions button:active {
   transform: translateY(0) scale(0.99);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none !important;
 }
 
 .subtle {
@@ -1000,6 +1070,20 @@ h2 {
   .map-form,
   .objective-child-form {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .objective-pick {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+
+  .objective-state {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .objective-branch-actions,
+  .objective-child-form {
+    margin-left: 28px;
   }
 
   .map-actions {

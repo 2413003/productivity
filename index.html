@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=objective-map">
+    <link rel="stylesheet" href="styles.css?v=map-outline">
   </head>
   <body>
     <div class="shell">
@@ -34,16 +34,16 @@
                 <p class="kicker">Map</p>
                 <h1 id="map-title">Objectives</h1>
               </div>
-              <output id="objectiveCount" aria-live="polite">0</output>
+              <output id="objectiveCount" aria-live="polite">0 items</output>
             </div>
 
             <form class="map-form" id="objectiveRootForm">
-              <input id="objectiveRootInput" type="text" autocomplete="off" placeholder="Objective">
+              <input id="objectiveRootInput" type="text" autocomplete="off" placeholder="New objective">
               <button class="primary" type="submit">Add</button>
             </form>
 
             <div class="map-actions">
-              <button class="primary" type="button" id="objectivePrioritizeBtn">Prioritize</button>
+              <button class="primary" type="button" id="objectivePrioritizeBtn">Prioritize tasks</button>
               <button class="subtle" type="button" data-view-button="focus">Top</button>
             </div>
             <output class="map-status" id="objectiveStatus" aria-live="polite"></output>
@@ -323,6 +323,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=objective-map"></script>
+    <script src="script.js?v=map-outline"></script>
   </body>
 </html>
