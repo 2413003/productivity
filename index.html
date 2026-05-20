@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=objective-mindmap-view">
+    <link rel="stylesheet" href="styles.css?v=objective-tight-highlight">
   </head>
   <body>
     <div class="shell">
@@ -334,6 +334,12 @@
 
     <dialog class="modal" id="proofDialog">
       <form method="dialog" id="proofForm">
+        <button class="modal-close" type="button" id="cancelProofBtn" aria-label="Cancel">
+          <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12" />
+            <path d="M18 6 6 18" />
+          </svg>
+        </button>
         <p class="kicker">Proof</p>
         <h2 id="proofTask">Task</h2>
         <input id="proofEvidence" type="text" autocomplete="off" placeholder="Link or note">
@@ -392,6 +398,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=objective-mindmap-view"></script>
+    <script src="script.js?v=objective-tight-highlight"></script>
   </body>
 </html>

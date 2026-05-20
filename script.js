@@ -11,6 +11,8 @@
   const MINDMAP_NODE_HEIGHT = 56;
   const MINDMAP_COLUMN_GAP = 242;
   const MINDMAP_ROW_GAP = 88;
+  const MINDMAP_MIN_WIDTH = 1280;
+  const MINDMAP_MIN_HEIGHT = 820;
   const TABLES = {
     profiles: "do_task_bracket_v1_profiles",
     tasks: "do_task_bracket_v1_tasks",
@@ -84,6 +86,7 @@
     proofForm: document.getElementById("proofForm"),
     proofTask: document.getElementById("proofTask"),
     proofEvidence: document.getElementById("proofEvidence"),
+    cancelProofBtn: document.getElementById("cancelProofBtn"),
     skipProofBtn: document.getElementById("skipProofBtn"),
     whyDialog: document.getElementById("whyDialog"),
     whyForm: document.getElementById("whyForm"),
@@ -132,6 +135,7 @@
   let lastSyncedInput = "";
   let recoveryMode = hasRecoveryLink();
   let proofTaskId = null;
+  let proofCancelSnapshot = null;
   let whyTaskId = null;
   let publicSnapshot = null;
   let pendingPublicProfileId = null;
@@ -149,6 +153,8 @@
   let objectiveDrag = null;
   let objectiveSuppressClick = false;
   let mindmapDrag = null;
+  let mindmapPan = null;
+  let mindmapViewportPrimed = false;
   let openingObjectiveIds = new Set();
   let closingObjectiveIds = new Set();
   let branchMotionTimers = new Map();
@@ -216,7 +222,9 @@
     refs.discoverableToggle.addEventListener("change", savePrivacySettings);
     refs.friendRequestsToggle.addEventListener("change", savePrivacySettings);
     refs.proofForm.addEventListener("submit", saveProof);
+    refs.cancelProofBtn.addEventListener("click", cancelProofDialog);
     refs.skipProofBtn.addEventListener("click", closeProofDialog);
+    refs.proofDialog.addEventListener("cancel", cancelProofDialog);
     refs.whyForm.addEventListener("submit", saveWhy);
     refs.cancelWhyBtn.addEventListener("click", closeWhyDialog);
     refs.supportForm.addEventListener("submit", saveSupport);
@@ -1580,6 +1588,7 @@
 
     if (view === "mindmap") {
       renderMindmap(roots);
+      primeMindmapViewport();
     }
   }
 
@@ -1592,6 +1601,7 @@
     objectiveMenuId = null;
     objectiveRenameId = null;
     objectiveDraftParentId = null;
+    mindmapViewportPrimed = false;
     saveState();
     renderMap();
   }
@@ -1683,7 +1693,7 @@
 
   function objectiveMindmapLayout(roots) {
     const autoPositions = new Map();
-    let cursorY = 32;
+    let cursorY = 112;
 
     const place = (node, depth) => {
       const children = objectiveChildren(node.id);
@@ -1694,7 +1704,7 @@
       }
 
       autoPositions.set(node.id, {
-        x: 28 + depth * MINDMAP_COLUMN_GAP,
+        x: 180 + depth * MINDMAP_COLUMN_GAP,
         y
       });
 
@@ -1722,10 +1732,28 @@
     });
 
     const values = Array.from(positions.values());
-    const width = Math.max(640, Math.ceil(Math.max(...values.map((item) => item.x)) + MINDMAP_NODE_WIDTH + 64));
-    const height = Math.max(420, Math.ceil(Math.max(...values.map((item) => item.y)) + MINDMAP_NODE_HEIGHT + 64));
+    const width = Math.max(MINDMAP_MIN_WIDTH, Math.ceil(Math.max(...values.map((item) => item.x)) + MINDMAP_NODE_WIDTH + 360));
+    const height = Math.max(MINDMAP_MIN_HEIGHT, Math.ceil(Math.max(...values.map((item) => item.y)) + MINDMAP_NODE_HEIGHT + 260));
 
     return { positions, width, height };
+  }
+
+  function primeMindmapViewport() {
+    if (mindmapViewportPrimed || !refs.objectiveCanvas) {
+      return;
+    }
+
+    mindmapViewportPrimed = true;
+    window.setTimeout(() => {
+      if (objectiveView() !== "mindmap" || !refs.objectiveCanvas) {
+        return;
+      }
+
+      const maxLeft = refs.objectiveCanvas.scrollWidth - refs.objectiveCanvas.clientWidth;
+      const maxTop = refs.objectiveCanvas.scrollHeight - refs.objectiveCanvas.clientHeight;
+      refs.objectiveCanvas.scrollLeft = Math.min(120, Math.max(0, maxLeft / 2));
+      refs.objectiveCanvas.scrollTop = Math.min(84, Math.max(0, maxTop / 2));
+    }, 0);
   }
 
   function renderMindmapLinks(svg, positions) {
@@ -2581,7 +2609,19 @@
     }
 
     const nodeElement = event.target.closest?.(".mindmap-node");
-    if (!nodeElement || !refs.objectiveMindmap?.contains(nodeElement)) {
+    if (!refs.objectiveMindmap?.contains(event.target)) {
+      return;
+    }
+
+    if (!nodeElement) {
+      mindmapPan = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        scrollLeft: refs.objectiveCanvas?.scrollLeft || 0,
+        scrollTop: refs.objectiveCanvas?.scrollTop || 0,
+        active: false
+      };
       return;
     }
 
@@ -2609,6 +2649,23 @@
   }
 
   function handleMindmapPointerMove(event) {
+    if (mindmapPan && mindmapPan.pointerId === event.pointerId) {
+      const distance = Math.hypot(event.clientX - mindmapPan.startX, event.clientY - mindmapPan.startY);
+      if (!mindmapPan.active && distance < 3) {
+        return;
+      }
+
+      event.preventDefault();
+      mindmapPan.active = true;
+      document.body.classList.add("is-mindmap-panning");
+
+      if (refs.objectiveCanvas) {
+        refs.objectiveCanvas.scrollLeft = mindmapPan.scrollLeft - (event.clientX - mindmapPan.startX);
+        refs.objectiveCanvas.scrollTop = mindmapPan.scrollTop - (event.clientY - mindmapPan.startY);
+      }
+      return;
+    }
+
     if (!mindmapDrag || mindmapDrag.pointerId !== event.pointerId) {
       return;
     }
@@ -2636,6 +2693,12 @@
   }
 
   function endMindmapPointer(event) {
+    if (mindmapPan && (!event || mindmapPan.pointerId === event.pointerId)) {
+      document.body.classList.remove("is-mindmap-panning");
+      mindmapPan = null;
+      return;
+    }
+
     if (!mindmapDrag || (event && mindmapDrag.pointerId !== event.pointerId)) {
       return;
     }
@@ -2653,6 +2716,11 @@
   }
 
   function cancelMindmapPointer() {
+    if (mindmapPan) {
+      document.body.classList.remove("is-mindmap-panning");
+      mindmapPan = null;
+    }
+
     if (!mindmapDrag) {
       return;
     }
@@ -3386,9 +3454,14 @@
     }
 
     if (button.dataset.action === "done") {
+      const snapshot = {
+        taskId: task.id,
+        done: task.done,
+        doneAt: task.doneAt
+      };
       task.done = true;
       task.doneAt = Date.now();
-      openProofDialog(task);
+      openProofDialog(task, { cancelSnapshot: snapshot });
     } else {
       task.done = false;
       task.doneAt = null;
@@ -3423,8 +3496,9 @@
     openProofDialog(task);
   }
 
-  function openProofDialog(task) {
+  function openProofDialog(task, options = {}) {
     proofTaskId = task.id;
+    proofCancelSnapshot = options.cancelSnapshot || null;
     refs.proofTask.textContent = task.text;
     refs.proofEvidence.value = latestProofForTask(task.id)?.evidence || "";
 
@@ -3436,9 +3510,30 @@
 
   function closeProofDialog() {
     proofTaskId = null;
+    proofCancelSnapshot = null;
     if (refs.proofDialog.open) {
       refs.proofDialog.close();
     }
+  }
+
+  function cancelProofDialog(event) {
+    event?.preventDefault();
+    const snapshot = proofCancelSnapshot;
+
+    if (snapshot) {
+      const task = findTask(snapshot.taskId);
+      if (task) {
+        task.done = Boolean(snapshot.done);
+        task.doneAt = snapshot.doneAt || null;
+      }
+
+      state.currentPair = null;
+      ensurePair();
+      saveState();
+    }
+
+    closeProofDialog();
+    render();
   }
 
   function openWhyDialog(task) {
@@ -4071,7 +4166,8 @@
     objectiveMenuId = null;
     objectiveRenameId = null;
     mindmapDrag = null;
-    document.body.classList.remove("is-mindmap-dragging");
+    mindmapPan = null;
+    document.body.classList.remove("is-mindmap-dragging", "is-mindmap-panning");
     activeView = "map";
     lastSyncedInput = "";
     refs.taskInput.value = "";
@@ -4095,7 +4191,8 @@
     objectiveMenuId = null;
     objectiveRenameId = null;
     mindmapDrag = null;
-    document.body.classList.remove("is-mindmap-dragging");
+    mindmapPan = null;
+    document.body.classList.remove("is-mindmap-dragging", "is-mindmap-panning");
     lastSignalUrl = "";
     lastSyncedInput = "";
     refs.recoveryForm.reset();

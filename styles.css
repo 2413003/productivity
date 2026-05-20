@@ -475,9 +475,16 @@ summary:focus-visible {
 }
 
 .map-canvas.is-mindmap {
-  min-height: min(58svh, 620px);
+  height: clamp(360px, 58svh, 620px);
   overflow: auto;
   border-top: 0;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.map-canvas.is-mindmap::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .objective-list {
@@ -494,6 +501,8 @@ summary:focus-visible {
   border-top: 1px solid var(--line);
   background-image: radial-gradient(color-mix(in srgb, var(--line-strong) 44%, transparent) 0.75px, transparent 0.75px);
   background-size: 22px 22px;
+  cursor: grab;
+  touch-action: none;
 }
 
 .mindmap-empty {
@@ -571,6 +580,12 @@ summary:focus-visible {
 .mindmap-node.is-dragging,
 body.is-mindmap-dragging .mindmap-node {
   cursor: grabbing;
+}
+
+body.is-mindmap-panning,
+body.is-mindmap-panning .mindmap-canvas {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .mindmap-title {
@@ -685,14 +700,16 @@ body.is-mindmap-dragging .mindmap-node {
 
 .objective-pick {
   min-width: 0;
-  width: 100%;
+  width: fit-content;
+  max-width: 100%;
+  justify-self: start;
   display: block;
   border: 0;
   border-radius: 7px;
   background: transparent;
   color: inherit;
   cursor: pointer;
-  padding: 7px 8px 7px 4px;
+  padding: 7px 8px;
   text-align: left;
   touch-action: pan-y;
   transition: background 140ms ease, box-shadow 140ms ease, color 140ms ease, transform 140ms ease;
@@ -1553,8 +1570,37 @@ h2 {
 }
 
 .modal form {
+  position: relative;
   display: grid;
   gap: 12px;
+}
+
+.modal-close {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  padding: 0;
+}
+
+.modal-close:hover,
+.modal-close:focus-visible {
+  color: var(--ink);
+  background: #fff;
+}
+
+.modal-close .control-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .modal-field {
