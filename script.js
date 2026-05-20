@@ -134,6 +134,8 @@
   let objectiveDraftParentId = null;
   let selectedObjectiveId = null;
   let objectiveRootOpen = false;
+  let objectiveMenuId = null;
+  let objectiveRenameId = null;
   let openingObjectiveIds = new Set();
   let closingObjectiveIds = new Set();
   let branchMotionTimers = new Map();
@@ -158,6 +160,7 @@
     refs.objectiveTree?.addEventListener("click", handleObjectiveAction);
     refs.objectiveTree?.addEventListener("submit", submitObjectiveChild);
     refs.objectiveTree?.addEventListener("keydown", handleObjectiveKeydown);
+    document.addEventListener("click", closeObjectiveMenuOutside);
     refs.choiceA.addEventListener("click", () => chooseCurrent(0));
     refs.choiceB.addEventListener("click", () => chooseCurrent(1));
     refs.skipBtn.addEventListener("click", skipCurrent);
@@ -307,6 +310,7 @@
           text: node.text.replace(/\s+/g, " ").trim(),
           kind: node.kind === "task" ? "task" : "objective",
           taskId: typeof node.taskId === "string" ? node.taskId : "",
+          masked: Boolean(node.masked),
           createdAt: Number(node.createdAt) || Date.now()
         };
       })
@@ -1342,6 +1346,7 @@
       if (existing) {
         existing.kind = existing.kind === "task" || node.kind === "task" ? "task" : "objective";
         existing.taskId = existing.taskId || node.taskId;
+        existing.masked = Boolean(node.masked);
         existing.createdAt = Math.min(existing.createdAt, node.createdAt);
         return;
       }
@@ -1508,6 +1513,12 @@
     if (selectedObjectiveId && !findObjective(selectedObjectiveId)) {
       selectedObjectiveId = null;
     }
+    if (objectiveMenuId && !findObjective(objectiveMenuId)) {
+      objectiveMenuId = null;
+    }
+    if (objectiveRenameId && !findObjective(objectiveRenameId)) {
+      objectiveRenameId = null;
+    }
 
     const existingIds = new Set(state.objectives.map((node) => node.id));
     state.collapsedObjectives = (state.collapsedObjectives || []).filter((id) => existingIds.has(id));
@@ -1532,6 +1543,9 @@
     item.classList.toggle("is-collapsed", isCollapsed);
     item.classList.toggle("is-opening", isOpening);
     item.classList.toggle("is-collapsing", isClosing);
+    item.classList.toggle("is-menu-open", objectiveMenuId === node.id);
+    item.classList.toggle("is-renaming", objectiveRenameId === node.id);
+    item.classList.toggle("is-masked", Boolean(node.masked));
     item.classList.toggle("has-branch", Boolean(children.length));
     item.style.animationDelay = `${Math.min(depth, 7) * 24}ms`;
     item.style.setProperty("--depth", depth);
@@ -1585,6 +1599,10 @@
       item.appendChild(createObjectiveDraftForm(node.id));
     }
 
+    if (objectiveRenameId === node.id) {
+      item.appendChild(createObjectiveRenameForm(node));
+    }
+
     if (children.length && (!isCollapsed || isClosing)) {
       const childList = document.createElement("ul");
       childList.className = "objective-list objective-branch";
@@ -1601,6 +1619,8 @@
 
   function createObjectiveActions(node) {
     const children = objectiveChildren(node.id);
+    const siblings = objectiveChildren(node.parentId || "");
+    const siblingIndex = siblings.findIndex((item) => item.id === node.id);
     const isLinked = Boolean(node.taskId && findTask(node.taskId));
     const actions = document.createElement("div");
     actions.className = `objective-branch-actions${isLinked ? " is-task-actions" : ""}`;
@@ -1641,6 +1661,68 @@
       actions.appendChild(taskButton);
     }
 
+    const moreWrap = document.createElement("span");
+    moreWrap.className = "objective-more-wrap";
+
+    const moreButton = document.createElement("button");
+    moreButton.className = "objective-action icon-action";
+    moreButton.type = "button";
+    moreButton.dataset.action = "toggle-more";
+    moreButton.dataset.id = node.id;
+    moreButton.setAttribute("aria-label", "More");
+    moreButton.setAttribute("aria-expanded", String(objectiveMenuId === node.id));
+    moreButton.dataset.tooltip = "More";
+    moreButton.appendChild(createControlIcon("more"));
+    moreWrap.appendChild(moreButton);
+
+    if (objectiveMenuId === node.id) {
+      const menu = document.createElement("div");
+      menu.className = "objective-more-menu";
+      menu.setAttribute("role", "menu");
+
+      const renameButton = document.createElement("button");
+      renameButton.type = "button";
+      renameButton.dataset.action = "rename-objective";
+      renameButton.dataset.id = node.id;
+      renameButton.setAttribute("role", "menuitem");
+      renameButton.textContent = "Rename";
+
+      const maskButton = document.createElement("button");
+      maskButton.type = "button";
+      maskButton.dataset.action = "toggle-mask";
+      maskButton.dataset.id = node.id;
+      maskButton.setAttribute("role", "menuitem");
+      maskButton.textContent = node.masked ? "Show" : "Hide";
+
+      menu.append(renameButton, maskButton);
+
+      if (siblingIndex > 0) {
+        const moveUpButton = document.createElement("button");
+        moveUpButton.type = "button";
+        moveUpButton.dataset.action = "move-objective";
+        moveUpButton.dataset.direction = "up";
+        moveUpButton.dataset.id = node.id;
+        moveUpButton.setAttribute("role", "menuitem");
+        moveUpButton.textContent = "Move up";
+        menu.appendChild(moveUpButton);
+      }
+
+      if (siblingIndex >= 0 && siblingIndex < siblings.length - 1) {
+        const moveDownButton = document.createElement("button");
+        moveDownButton.type = "button";
+        moveDownButton.dataset.action = "move-objective";
+        moveDownButton.dataset.direction = "down";
+        moveDownButton.dataset.id = node.id;
+        moveDownButton.setAttribute("role", "menuitem");
+        moveDownButton.textContent = "Move down";
+        menu.appendChild(moveDownButton);
+      }
+
+      moreWrap.appendChild(menu);
+    }
+
+    actions.appendChild(moreWrap);
+
     const deleteButton = document.createElement("button");
     deleteButton.className = "objective-action icon-action is-danger";
     deleteButton.type = "button";
@@ -1677,6 +1759,33 @@
     cancel.textContent = "Cancel";
 
     form.append(input, add, cancel);
+    return form;
+  }
+
+  function createObjectiveRenameForm(node) {
+    const form = document.createElement("form");
+    form.className = "objective-rename-form";
+    form.dataset.id = node.id;
+
+    const input = document.createElement("input");
+    input.id = "objectiveRenameInput";
+    input.type = "text";
+    input.autocomplete = "off";
+    input.value = node.text;
+    input.placeholder = "Rename";
+
+    const save = document.createElement("button");
+    save.className = "primary";
+    save.type = "submit";
+    save.textContent = "Save";
+
+    const cancel = document.createElement("button");
+    cancel.className = "subtle";
+    cancel.type = "button";
+    cancel.dataset.action = "cancel-rename";
+    cancel.textContent = "Cancel";
+
+    form.append(input, save, cancel);
     return form;
   }
 
@@ -1780,6 +1889,8 @@
 
   function openRootObjectiveForm() {
     objectiveRootOpen = true;
+    objectiveMenuId = null;
+    objectiveRenameId = null;
     renderMap();
     window.setTimeout(() => refs.objectiveRootInput?.focus(), 0);
   }
@@ -1799,6 +1910,12 @@
   }
 
   function submitObjectiveChild(event) {
+    const renameForm = event.target.closest(".objective-rename-form");
+    if (renameForm) {
+      submitObjectiveRename(event, renameForm);
+      return;
+    }
+
     const form = event.target.closest(".objective-child-form");
     if (!form) {
       return;
@@ -1815,8 +1932,34 @@
     addObjective(text, form.dataset.parentId || "");
   }
 
+  function submitObjectiveRename(event, form) {
+    event.preventDefault();
+    const node = findObjective(form.dataset.id);
+    const input = form.querySelector("input");
+    const text = input.value.replace(/\s+/g, " ").trim();
+
+    if (!node) {
+      objectiveRenameId = null;
+      render();
+      return;
+    }
+
+    if (!text) {
+      input.focus();
+      return;
+    }
+
+    renameObjective(node, text);
+  }
+
   function handleObjectiveKeydown(event) {
     if (event.key !== "Escape") {
+      return;
+    }
+
+    if (event.target.closest(".objective-rename-form")) {
+      objectiveRenameId = null;
+      render();
       return;
     }
 
@@ -1842,6 +1985,7 @@
     const action = button.dataset.action;
     if (action === "select") {
       selectedObjectiveId = button.dataset.id || null;
+      objectiveMenuId = null;
       render();
       return;
     }
@@ -1852,19 +1996,62 @@
       return;
     }
 
+    if (action === "cancel-rename") {
+      objectiveRenameId = null;
+      render();
+      return;
+    }
+
     const node = findObjective(button.dataset.id);
     if (!node) {
       return;
     }
 
     if (action === "toggle-branch") {
+      objectiveMenuId = null;
       toggleObjectiveBranch(node.id);
+      return;
+    }
+
+    if (action === "toggle-more") {
+      selectedObjectiveId = node.id;
+      objectiveMenuId = objectiveMenuId === node.id ? null : node.id;
+      render();
+      return;
+    }
+
+    if (action === "rename-objective") {
+      selectedObjectiveId = node.id;
+      objectiveMenuId = null;
+      objectiveDraftParentId = null;
+      objectiveRenameId = node.id;
+      render();
+      window.setTimeout(() => {
+        const input = document.getElementById("objectiveRenameInput");
+        input?.focus();
+        input?.select();
+      }, 0);
+      return;
+    }
+
+    if (action === "toggle-mask") {
+      node.masked = !node.masked;
+      objectiveMenuId = null;
+      saveState({ immediate: true });
+      render();
+      return;
+    }
+
+    if (action === "move-objective") {
+      moveObjective(node, button.dataset.direction === "up" ? "up" : "down");
       return;
     }
 
     if (action === "add-child") {
       selectedObjectiveId = node.id;
       objectiveDraftParentId = node.id;
+      objectiveMenuId = null;
+      objectiveRenameId = null;
       expandObjective(node.id);
       render();
       window.setTimeout(() => document.getElementById("objectiveDraftInput")?.focus(), 0);
@@ -1872,16 +2059,19 @@
     }
 
     if (action === "make-task") {
+      objectiveMenuId = null;
       ensureTaskForObjective(node.id);
       return;
     }
 
     if (action === "make-step") {
+      objectiveMenuId = null;
       markObjectiveAsStep(node.id);
       return;
     }
 
     if (action === "delete") {
+      objectiveMenuId = null;
       deleteObjective(node.id);
     }
   }
@@ -1894,6 +2084,7 @@
       text: text.replace(/\s+/g, " ").trim(),
       kind: "objective",
       taskId: "",
+      masked: false,
       createdAt: Date.now() + Math.random()
     });
     selectedObjectiveId = id;
@@ -1903,6 +2094,89 @@
     }
     saveState({ immediate: true });
     render();
+  }
+
+  function renameObjective(node, text) {
+    node.text = text;
+    objectiveRenameId = null;
+    objectiveMenuId = null;
+
+    const affectedIds = new Set([node.id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      state.objectives.forEach((item) => {
+        if (!affectedIds.has(item.id) && affectedIds.has(item.parentId)) {
+          affectedIds.add(item.id);
+          changed = true;
+        }
+      });
+    }
+
+    state.objectives.forEach((item) => {
+      if (!affectedIds.has(item.id) || !item.taskId) {
+        return;
+      }
+
+      const task = findTask(item.taskId);
+      if (!task) {
+        return;
+      }
+
+      if (item.id === node.id) {
+        task.text = text;
+        state.reputation.proofs.forEach((proof) => {
+          if (proof.taskId === task.id) {
+            proof.taskText = text;
+          }
+        });
+      }
+
+      task.justification = objectivePath(item.id).join(" / ");
+    });
+
+    syncDraftFromTasks();
+
+    saveState({ immediate: true });
+    render();
+  }
+
+  function moveObjective(node, direction) {
+    const siblings = objectiveChildren(node.parentId || "");
+    const fromIndex = siblings.findIndex((item) => item.id === node.id);
+    const toIndex = direction === "up" ? fromIndex - 1 : fromIndex + 1;
+
+    if (fromIndex < 0 || toIndex < 0 || toIndex >= siblings.length) {
+      objectiveMenuId = null;
+      render();
+      return;
+    }
+
+    const reordered = siblings.slice();
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+
+    const firstCreatedAt = Math.min(...siblings.map((item) => Number(item.createdAt) || Date.now()));
+    reordered.forEach((item, index) => {
+      const target = findObjective(item.id);
+      if (target) {
+        target.createdAt = firstCreatedAt + index;
+      }
+    });
+
+    selectedObjectiveId = node.id;
+    objectiveMenuId = null;
+    saveState({ immediate: true });
+    render();
+  }
+
+  function closeObjectiveMenuOutside(event) {
+    if (!objectiveMenuId || event.target.closest(".objective-more-wrap")) {
+      return;
+    }
+
+    objectiveMenuId = null;
+    renderMap();
   }
 
   function objectiveIsCollapsed(id) {
@@ -1984,6 +2258,12 @@
     });
     if (removeIds.has(objectiveDraftParentId)) {
       objectiveDraftParentId = null;
+    }
+    if (removeIds.has(objectiveMenuId)) {
+      objectiveMenuId = null;
+    }
+    if (removeIds.has(objectiveRenameId)) {
+      objectiveRenameId = null;
     }
     if (removeIds.has(selectedObjectiveId)) {
       selectedObjectiveId = deleted?.parentId || state.objectives[0]?.id || null;
@@ -2347,6 +2627,17 @@
       const horizontal = document.createElementNS("http://www.w3.org/2000/svg", "path");
       horizontal.setAttribute("d", "M5 12h14");
       svg.append(vertical, horizontal);
+      return svg;
+    }
+
+    if (name === "more") {
+      [7, 12, 17].forEach((cx) => {
+        const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        dot.setAttribute("cx", String(cx));
+        dot.setAttribute("cy", "12");
+        dot.setAttribute("r", "1.6");
+        svg.appendChild(dot);
+      });
       return svg;
     }
 
@@ -3217,6 +3508,8 @@
     objectiveDraftParentId = null;
     selectedObjectiveId = null;
     objectiveRootOpen = false;
+    objectiveMenuId = null;
+    objectiveRenameId = null;
     activeView = "map";
     lastSyncedInput = "";
     refs.taskInput.value = "";
@@ -3237,6 +3530,8 @@
     objectiveDraftParentId = null;
     selectedObjectiveId = null;
     objectiveRootOpen = false;
+    objectiveMenuId = null;
+    objectiveRenameId = null;
     lastSignalUrl = "";
     lastSyncedInput = "";
     refs.recoveryForm.reset();

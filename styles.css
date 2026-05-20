@@ -430,6 +430,12 @@ summary:focus-visible {
   transform: translate(-50%, 0);
 }
 
+.map-add-trigger::after {
+  top: auto;
+  bottom: calc(100% + 8px);
+  transform: translate(-50%, 3px);
+}
+
 .map-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -438,7 +444,8 @@ summary:focus-visible {
 }
 
 .map-form input,
-.objective-child-form input {
+.objective-child-form input,
+.objective-rename-form input {
   width: 100%;
   min-height: 42px;
   border: 1px solid var(--line);
@@ -622,6 +629,13 @@ summary:focus-visible {
   color: inherit;
 }
 
+.objective-item.is-masked > .objective-node .objective-main {
+  opacity: 0.58;
+  filter: blur(4px);
+  user-select: none;
+  transition: opacity 140ms ease, filter 140ms ease;
+}
+
 .objective-state {
   display: none;
 }
@@ -642,12 +656,13 @@ summary:focus-visible {
 
 .objective-item:not(.is-task-item) > .objective-node:hover > .objective-branch-actions,
 .objective-item:not(.is-task-item) > .objective-node:focus-within > .objective-branch-actions,
-.objective-item.is-selected:not(.is-task-item) > .objective-node > .objective-branch-actions {
+.objective-item.is-selected:not(.is-task-item) > .objective-node > .objective-branch-actions,
+.objective-item.is-menu-open > .objective-node > .objective-branch-actions {
   display: flex;
 }
 
-.objective-item.is-selected:not(.is-task-item):has(.objective-item:hover) > .objective-node > .objective-branch-actions,
-.objective-item.is-selected:not(.is-task-item):has(.objective-item:focus-within) > .objective-node > .objective-branch-actions {
+.objective-item.is-selected:not(.is-menu-open):not(.is-task-item):has(.objective-item:hover) > .objective-node > .objective-branch-actions,
+.objective-item.is-selected:not(.is-menu-open):not(.is-task-item):has(.objective-item:focus-within) > .objective-node > .objective-branch-actions {
   display: none;
 }
 
@@ -697,6 +712,42 @@ summary:focus-visible {
   color: var(--danger);
 }
 
+.objective-more-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.objective-more-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  min-width: 112px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: 0 12px 28px rgba(21, 23, 19, 0.12);
+}
+
+.objective-more-menu button {
+  min-height: 32px;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink);
+  padding: 0 9px;
+  text-align: left;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.objective-more-menu button:hover,
+.objective-more-menu button:focus-visible {
+  background: rgba(21, 23, 19, 0.06);
+}
+
 .objective-branch-actions.is-task-actions .objective-action.is-danger {
   min-height: 42px;
   background: var(--panel);
@@ -713,11 +764,13 @@ summary:focus-visible {
   transform: translate(-50%, 0);
 }
 
-.objective-item:has(> .objective-child-form) > .objective-node > .objective-branch-actions {
+.objective-item:has(> .objective-child-form) > .objective-node > .objective-branch-actions,
+.objective-item:has(> .objective-rename-form) > .objective-node > .objective-branch-actions {
   display: none;
 }
 
-.objective-child-form {
+.objective-child-form,
+.objective-rename-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
@@ -1452,7 +1505,8 @@ h2 {
   }
 
   .map-form,
-  .objective-child-form {
+  .objective-child-form,
+  .objective-rename-form {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -1461,7 +1515,8 @@ h2 {
     justify-self: start;
   }
 
-  .objective-child-form {
+  .objective-child-form,
+  .objective-rename-form {
     margin-left: 28px;
   }
 
