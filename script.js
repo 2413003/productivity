@@ -6,6 +6,7 @@
   const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
   const SPRINT_MS = 60000;
   const BRANCH_MOTION_MS = 190;
+  const OBJECTIVE_DRAG_HOLD_MS = 420;
   const TABLES = {
     profiles: "do_task_bracket_v1_profiles",
     tasks: "do_task_bracket_v1_tasks",
@@ -136,6 +137,10 @@
   let objectiveRootOpen = false;
   let objectiveMenuId = null;
   let objectiveRenameId = null;
+  let objectivePress = null;
+  let objectivePressTimer = null;
+  let objectiveDrag = null;
+  let objectiveSuppressClick = false;
   let openingObjectiveIds = new Set();
   let closingObjectiveIds = new Set();
   let branchMotionTimers = new Map();
@@ -157,9 +162,14 @@
     refs.objectiveRootToggle?.addEventListener("click", openRootObjectiveForm);
     refs.objectiveRootForm?.addEventListener("submit", addRootObjective);
     refs.objectiveRootForm?.addEventListener("keydown", handleObjectiveKeydown);
+    refs.objectiveTree?.addEventListener("click", suppressObjectiveDragClick, true);
     refs.objectiveTree?.addEventListener("click", handleObjectiveAction);
     refs.objectiveTree?.addEventListener("submit", submitObjectiveChild);
     refs.objectiveTree?.addEventListener("keydown", handleObjectiveKeydown);
+    refs.objectiveTree?.addEventListener("pointerdown", handleObjectivePointerDown);
+    window.addEventListener("pointermove", handleObjectivePointerMove, { passive: false });
+    window.addEventListener("pointerup", endObjectivePointer);
+    window.addEventListener("pointercancel", cancelObjectivePointer);
     document.addEventListener("click", closeObjectiveMenuOutside);
     refs.choiceA.addEventListener("click", () => chooseCurrent(0));
     refs.choiceB.addEventListener("click", () => chooseCurrent(1));
@@ -1546,7 +1556,9 @@
     item.classList.toggle("is-menu-open", objectiveMenuId === node.id);
     item.classList.toggle("is-renaming", objectiveRenameId === node.id);
     item.classList.toggle("is-masked", Boolean(node.masked));
+    item.classList.toggle("is-dragging", objectiveDrag?.id === node.id);
     item.classList.toggle("has-branch", Boolean(children.length));
+    item.dataset.objectiveId = node.id;
     item.style.animationDelay = `${Math.min(depth, 7) * 24}ms`;
     item.style.setProperty("--depth", depth);
 
@@ -1622,8 +1634,6 @@
 
   function createObjectiveActions(node) {
     const children = objectiveChildren(node.id);
-    const siblings = objectiveChildren(node.parentId || "");
-    const siblingIndex = siblings.findIndex((item) => item.id === node.id);
     const isLinked = Boolean(node.taskId && findTask(node.taskId));
     const actions = document.createElement("div");
     actions.className = `objective-branch-actions${isLinked ? " is-task-actions" : ""}`;
@@ -1698,29 +1708,6 @@
       maskButton.textContent = node.masked ? "Show" : "Hide";
 
       menu.append(renameButton, maskButton);
-
-      if (siblingIndex > 0) {
-        const moveUpButton = document.createElement("button");
-        moveUpButton.type = "button";
-        moveUpButton.dataset.action = "move-objective";
-        moveUpButton.dataset.direction = "up";
-        moveUpButton.dataset.id = node.id;
-        moveUpButton.setAttribute("role", "menuitem");
-        moveUpButton.textContent = "Move up";
-        menu.appendChild(moveUpButton);
-      }
-
-      if (siblingIndex >= 0 && siblingIndex < siblings.length - 1) {
-        const moveDownButton = document.createElement("button");
-        moveDownButton.type = "button";
-        moveDownButton.dataset.action = "move-objective";
-        moveDownButton.dataset.direction = "down";
-        moveDownButton.dataset.id = node.id;
-        moveDownButton.setAttribute("role", "menuitem");
-        moveDownButton.textContent = "Move down";
-        menu.appendChild(moveDownButton);
-      }
-
       moreWrap.appendChild(menu);
     }
 
@@ -2044,11 +2031,6 @@
       return;
     }
 
-    if (action === "move-objective") {
-      moveObjective(node, button.dataset.direction === "up" ? "up" : "down");
-      return;
-    }
-
     if (action === "add-child") {
       selectedObjectiveId = node.id;
       objectiveDraftParentId = node.id;
@@ -2143,33 +2125,184 @@
     render();
   }
 
-  function moveObjective(node, direction) {
-    const siblings = objectiveChildren(node.parentId || "");
-    const fromIndex = siblings.findIndex((item) => item.id === node.id);
-    const toIndex = direction === "up" ? fromIndex - 1 : fromIndex + 1;
-
-    if (fromIndex < 0 || toIndex < 0 || toIndex >= siblings.length) {
-      objectiveMenuId = null;
-      render();
+  function handleObjectivePointerDown(event) {
+    if (event.button !== undefined && event.button !== 0) {
       return;
     }
 
-    const reordered = siblings.slice();
-    const [moved] = reordered.splice(fromIndex, 1);
-    reordered.splice(toIndex, 0, moved);
+    const pick = event.target.closest(".objective-pick");
+    if (!pick || pick.closest(".objective-rename-form, .objective-child-form")) {
+      return;
+    }
 
+    const node = findObjective(pick.dataset.id);
+    if (!node) {
+      return;
+    }
+
+    window.clearTimeout(objectivePressTimer);
+    objectivePress = {
+      id: node.id,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY
+    };
+
+    objectivePressTimer = window.setTimeout(() => {
+      startObjectiveDrag(node.id, event.pointerId);
+    }, OBJECTIVE_DRAG_HOLD_MS);
+  }
+
+  function handleObjectivePointerMove(event) {
+    if (objectivePress && !objectiveDrag && objectivePress.pointerId === event.pointerId) {
+      const distance = Math.hypot(event.clientX - objectivePress.startX, event.clientY - objectivePress.startY);
+      if (distance > 8) {
+        cancelObjectivePointer();
+      }
+      return;
+    }
+
+    if (!objectiveDrag || objectiveDrag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    const target = objectiveDragTarget(event.clientX, event.clientY);
+    if (!target || target.id === objectiveDrag.id || target.parentId !== objectiveDrag.parentId) {
+      return;
+    }
+
+    const after = event.clientY > target.midY;
+    if (moveObjectiveNear(objectiveDrag.id, target.id, after)) {
+      renderMap();
+    }
+  }
+
+  function startObjectiveDrag(id, pointerId) {
+    const node = findObjective(id);
+    if (!node || !objectivePress || objectivePress.pointerId !== pointerId) {
+      return;
+    }
+
+    objectiveDrag = {
+      id,
+      parentId: node.parentId || "",
+      pointerId
+    };
+    objectiveSuppressClick = true;
+    selectedObjectiveId = id;
+    objectiveMenuId = null;
+    objectiveRenameId = null;
+    objectiveDraftParentId = null;
+    document.body.classList.add("is-objective-dragging");
+    renderMap();
+  }
+
+  function endObjectivePointer(event) {
+    if (event && objectivePress && objectivePress.pointerId !== event.pointerId && objectiveDrag?.pointerId !== event.pointerId) {
+      return;
+    }
+
+    window.clearTimeout(objectivePressTimer);
+    objectivePress = null;
+
+    if (!objectiveDrag) {
+      return;
+    }
+
+    objectiveDrag = null;
+    document.body.classList.remove("is-objective-dragging");
+    saveState({ immediate: true });
+    render();
+    window.setTimeout(() => {
+      objectiveSuppressClick = false;
+    }, 80);
+  }
+
+  function cancelObjectivePointer() {
+    window.clearTimeout(objectivePressTimer);
+    objectivePress = null;
+
+    if (!objectiveDrag) {
+      return;
+    }
+
+    objectiveDrag = null;
+    document.body.classList.remove("is-objective-dragging");
+    renderMap();
+    window.setTimeout(() => {
+      objectiveSuppressClick = false;
+    }, 80);
+  }
+
+  function suppressObjectiveDragClick(event) {
+    if (!objectiveSuppressClick) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    objectiveSuppressClick = false;
+  }
+
+  function objectiveDragTarget(x, y) {
+    const item = document
+      .elementsFromPoint(x, y)
+      .map((element) => element.closest?.(".objective-item"))
+      .find(Boolean);
+
+    return item ? objectiveDragTargetFromItem(item) : null;
+  }
+
+  function objectiveDragTargetFromItem(item) {
+    const id = item?.dataset.objectiveId;
+    const node = id ? findObjective(id) : null;
+    const row = item?.querySelector(":scope > .objective-node");
+    const box = row?.getBoundingClientRect();
+    if (!node || !box) {
+      return null;
+    }
+
+    return {
+      id: node.id,
+      parentId: node.parentId || "",
+      midY: box.top + box.height / 2
+    };
+  }
+
+  function moveObjectiveNear(id, targetId, after) {
+    const node = findObjective(id);
+    const target = findObjective(targetId);
+    if (!node || !target || (node.parentId || "") !== (target.parentId || "")) {
+      return false;
+    }
+
+    const siblings = objectiveChildren(node.parentId || "");
+    const fromIndex = siblings.findIndex((item) => item.id === id);
+    const withoutDragged = siblings.filter((item) => item.id !== id);
+    const targetIndex = withoutDragged.findIndex((item) => item.id === targetId);
+
+    if (fromIndex < 0 || targetIndex < 0) {
+      return false;
+    }
+
+    const insertIndex = targetIndex + (after ? 1 : 0);
+    if ((after && fromIndex === targetIndex + 1) || (!after && fromIndex === targetIndex)) {
+      return false;
+    }
+
+    const nextOrder = withoutDragged.slice();
+    nextOrder.splice(insertIndex, 0, node);
     const firstCreatedAt = Math.min(...siblings.map((item) => Number(item.createdAt) || Date.now()));
-    reordered.forEach((item, index) => {
-      const target = findObjective(item.id);
-      if (target) {
-        target.createdAt = firstCreatedAt + index;
+    nextOrder.forEach((item, index) => {
+      const objective = findObjective(item.id);
+      if (objective) {
+        objective.createdAt = firstCreatedAt + index;
       }
     });
 
-    selectedObjectiveId = node.id;
-    objectiveMenuId = null;
-    saveState({ immediate: true });
-    render();
+    selectedObjectiveId = id;
+    return true;
   }
 
   function closeObjectiveMenuOutside(event) {

@@ -529,6 +529,7 @@ summary:focus-visible {
   align-items: center;
   min-height: 40px;
   margin: 2px 0;
+  transition: transform 140ms ease;
 }
 
 .objective-toggle,
@@ -573,9 +574,11 @@ summary:focus-visible {
   border-radius: 7px;
   background: transparent;
   color: inherit;
+  cursor: grab;
   padding: 7px 8px 7px 4px;
   text-align: left;
-  transition: background 140ms ease, color 140ms ease;
+  touch-action: pan-y;
+  transition: background 140ms ease, box-shadow 140ms ease, color 140ms ease, transform 140ms ease;
 }
 
 .objective-pick:hover {
@@ -646,6 +649,30 @@ summary:focus-visible {
 .objective-item.is-masked .objective-node .objective-title,
 .objective-item.is-masked .objective-node .objective-meta {
   color: var(--muted);
+}
+
+body.is-objective-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+body.is-objective-dragging .objective-branch-actions {
+  display: none !important;
+}
+
+body.is-objective-dragging .objective-pick {
+  cursor: grabbing;
+}
+
+.objective-item.is-dragging > .objective-node {
+  z-index: 6;
+  transform: scale(1.012);
+}
+
+.objective-item.is-dragging > .objective-node .objective-pick {
+  background: var(--panel);
+  box-shadow: 0 10px 26px rgba(21, 23, 19, 0.11);
+  color: var(--ink);
 }
 
 .objective-state {
