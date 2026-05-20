@@ -629,11 +629,23 @@ summary:focus-visible {
   color: inherit;
 }
 
-.objective-item.is-masked > .objective-node .objective-main {
-  opacity: 0.58;
-  filter: blur(4px);
+.objective-item.is-masked .objective-node .objective-pick,
+.objective-item.is-masked .objective-node .objective-pick[aria-current="true"],
+.objective-item.is-masked .objective-node .objective-pick:hover {
+  background: rgba(255, 255, 255, 0.38);
+  color: var(--muted);
+}
+
+.objective-item.is-masked .objective-node .objective-main {
+  opacity: 0.28;
+  filter: blur(8px);
   user-select: none;
   transition: opacity 140ms ease, filter 140ms ease;
+}
+
+.objective-item.is-masked .objective-node .objective-title,
+.objective-item.is-masked .objective-node .objective-meta {
+  color: var(--muted);
 }
 
 .objective-state {
