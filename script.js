@@ -1545,6 +1545,7 @@
     const view = objectiveView();
 
     refs.objectiveRootToggle?.classList.toggle("is-hidden", objectiveRootOpen);
+    refs.objectiveViewToggle?.classList.toggle("is-hidden", objectiveRootOpen);
     refs.objectiveRootForm?.classList.toggle("is-hidden", !objectiveRootOpen);
     refs.objectiveTree?.classList.toggle("is-hidden", view !== "list");
     refs.objectiveMindmap?.classList.toggle("is-hidden", view !== "mindmap");
@@ -1731,6 +1732,18 @@
       });
     });
 
+    const initialValues = Array.from(positions.values());
+    const minX = Math.min(...initialValues.map((item) => item.x));
+    const minY = Math.min(...initialValues.map((item) => item.y));
+    const offsetX = Math.max(0, 96 - minX);
+    const offsetY = Math.max(0, 72 - minY);
+    if (offsetX || offsetY) {
+      positions.forEach((position) => {
+        position.x += offsetX;
+        position.y += offsetY;
+      });
+    }
+
     const values = Array.from(positions.values());
     const width = Math.max(MINDMAP_MIN_WIDTH, Math.ceil(Math.max(...values.map((item) => item.x)) + MINDMAP_NODE_WIDTH + 360));
     const height = Math.max(MINDMAP_MIN_HEIGHT, Math.ceil(Math.max(...values.map((item) => item.y)) + MINDMAP_NODE_HEIGHT + 260));
@@ -1751,8 +1764,12 @@
 
       const maxLeft = refs.objectiveCanvas.scrollWidth - refs.objectiveCanvas.clientWidth;
       const maxTop = refs.objectiveCanvas.scrollHeight - refs.objectiveCanvas.clientHeight;
-      refs.objectiveCanvas.scrollLeft = Math.min(120, Math.max(0, maxLeft / 2));
-      refs.objectiveCanvas.scrollTop = Math.min(84, Math.max(0, maxTop / 2));
+      const layout = objectiveMindmapLayout(objectiveChildren(""));
+      const positions = Array.from(layout.positions.values());
+      const minX = positions.length ? Math.min(...positions.map((position) => position.x)) : 0;
+      const minY = positions.length ? Math.min(...positions.map((position) => position.y)) : 0;
+      refs.objectiveCanvas.scrollLeft = Math.min(Math.max(0, minX - 96), Math.max(0, maxLeft));
+      refs.objectiveCanvas.scrollTop = Math.min(Math.max(0, minY - 72), Math.max(0, maxTop));
     }, 0);
   }
 
