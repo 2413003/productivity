@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=objective-single-actions-v3">
+    <link rel="stylesheet" href="styles.css?v=objective-mindmap-view">
   </head>
   <body>
     <div class="shell">
@@ -73,19 +73,33 @@
               </div>
             </div>
 
-            <button class="map-add-trigger icon-add" type="button" id="objectiveRootToggle" aria-label="Add objective" data-tooltip="Add objective">
-              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M12 5v14" />
-                <path d="M5 12h14" />
-              </svg>
-            </button>
+            <div class="map-tools">
+              <button class="map-add-trigger icon-add" type="button" id="objectiveRootToggle" aria-label="Add objective" data-tooltip="Add objective">
+                <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
+              </button>
+              <button class="map-view-trigger icon-add" type="button" id="objectiveViewToggle" aria-label="Mind map" data-tooltip="Mind map">
+                <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 5v5" />
+                  <path d="M7 15h10" />
+                  <path d="M7 15v4" />
+                  <path d="M17 15v4" />
+                  <circle cx="12" cy="4" r="2" />
+                  <circle cx="7" cy="20" r="2" />
+                  <circle cx="17" cy="20" r="2" />
+                </svg>
+              </button>
+            </div>
             <form class="map-form is-hidden" id="objectiveRootForm">
               <input id="objectiveRootInput" type="text" autocomplete="off" placeholder="New objective">
               <button class="primary" type="submit">Add</button>
             </form>
 
-            <div class="map-canvas">
+            <div class="map-canvas" id="objectiveCanvas">
               <ul class="objective-list" id="objectiveTree"></ul>
+              <div class="mindmap-canvas is-hidden" id="objectiveMindmap" aria-label="Objectives mind map"></div>
             </div>
           </div>
         </section>
@@ -378,6 +392,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=objective-single-actions-v3"></script>
+    <script src="script.js?v=objective-mindmap-view"></script>
   </body>
 </html>

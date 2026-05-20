@@ -7,6 +7,10 @@
   const SPRINT_MS = 60000;
   const BRANCH_MOTION_MS = 190;
   const OBJECTIVE_DRAG_HOLD_MS = 420;
+  const MINDMAP_NODE_WIDTH = 184;
+  const MINDMAP_NODE_HEIGHT = 56;
+  const MINDMAP_COLUMN_GAP = 242;
+  const MINDMAP_ROW_GAP = 88;
   const TABLES = {
     profiles: "do_task_bracket_v1_profiles",
     tasks: "do_task_bracket_v1_tasks",
@@ -20,7 +24,10 @@
     objectiveRootToggle: document.getElementById("objectiveRootToggle"),
     objectiveRootForm: document.getElementById("objectiveRootForm"),
     objectiveRootInput: document.getElementById("objectiveRootInput"),
+    objectiveViewToggle: document.getElementById("objectiveViewToggle"),
+    objectiveCanvas: document.getElementById("objectiveCanvas"),
     objectiveTree: document.getElementById("objectiveTree"),
+    objectiveMindmap: document.getElementById("objectiveMindmap"),
     objectiveCount: document.getElementById("objectiveCount"),
     objectiveStatus: document.getElementById("objectiveStatus"),
     taskInput: document.getElementById("taskInput"),
@@ -141,6 +148,7 @@
   let objectivePressTimer = null;
   let objectiveDrag = null;
   let objectiveSuppressClick = false;
+  let mindmapDrag = null;
   let openingObjectiveIds = new Set();
   let closingObjectiveIds = new Set();
   let branchMotionTimers = new Map();
@@ -160,6 +168,7 @@
     refs.taskInput.addEventListener("input", saveDraftInput);
     refs.startBtn.addEventListener("click", () => applyTasks("choose"));
     refs.objectiveRootToggle?.addEventListener("click", openRootObjectiveForm);
+    refs.objectiveViewToggle?.addEventListener("click", toggleObjectiveView);
     refs.objectiveRootForm?.addEventListener("submit", addRootObjective);
     refs.objectiveRootForm?.addEventListener("keydown", handleObjectiveKeydown);
     refs.objectiveTree?.addEventListener("click", suppressObjectiveDragClick, true);
@@ -167,10 +176,15 @@
     refs.objectiveTree?.addEventListener("submit", submitObjectiveChild);
     refs.objectiveTree?.addEventListener("keydown", handleObjectiveKeydown);
     refs.objectiveTree?.addEventListener("pointerdown", handleObjectivePointerDown);
+    refs.objectiveMindmap?.addEventListener("pointerdown", handleMindmapPointerDown);
     window.addEventListener("pointermove", handleObjectivePointerMove, { passive: false });
+    window.addEventListener("pointermove", handleMindmapPointerMove, { passive: false });
     window.addEventListener("pointerup", endObjectivePointer);
+    window.addEventListener("pointerup", endMindmapPointer);
     window.addEventListener("pointercancel", cancelObjectivePointer);
-    document.addEventListener("click", closeObjectiveMenuOutside);
+    window.addEventListener("pointercancel", cancelMindmapPointer);
+    window.addEventListener("click", closeObjectiveChromeOutside, true);
+    document.addEventListener("pointerdown", closeObjectiveChromeOutside, true);
     refs.choiceA.addEventListener("click", () => chooseCurrent(0));
     refs.choiceB.addEventListener("click", () => chooseCurrent(1));
     refs.skipBtn.addEventListener("click", skipCurrent);
@@ -266,6 +280,7 @@
     return {
       ...base,
       ...saved,
+      objectiveView: saved.objectiveView === "mindmap" ? "mindmap" : "list",
       draftText: typeof saved.draftText === "string" ? saved.draftText : "",
       topCount: clamp(Number(saved.topCount) || 3, 1, 99),
       totalTaps: Number(saved.totalTaps) || 0,
@@ -314,7 +329,9 @@
         }
         seen.add(id);
 
-        return {
+        const mapX = Number(node.mapX);
+        const mapY = Number(node.mapY);
+        const normalized = {
           id,
           parentId: typeof node.parentId === "string" ? node.parentId : "",
           text: node.text.replace(/\s+/g, " ").trim(),
@@ -323,6 +340,13 @@
           masked: Boolean(node.masked),
           createdAt: Number(node.createdAt) || Date.now()
         };
+
+        if (Number.isFinite(mapX) && Number.isFinite(mapY)) {
+          normalized.mapX = clamp(mapX, 0, 6000);
+          normalized.mapY = clamp(mapY, 0, 6000);
+        }
+
+        return normalized;
       })
       .filter((node) => node && node.text);
     const ids = new Set(nodes.map((node) => node.id));
@@ -357,6 +381,7 @@
       tasks: [],
       objectives: [],
       collapsedObjectives: [],
+      objectiveView: "list",
       draftText: "",
       topCount: 1,
       totalTaps: 0,
@@ -1358,6 +1383,10 @@
         existing.taskId = existing.taskId || node.taskId;
         existing.masked = Boolean(node.masked);
         existing.createdAt = Math.min(existing.createdAt, node.createdAt);
+        if (!Number.isFinite(existing.mapX) && Number.isFinite(node.mapX) && Number.isFinite(node.mapY)) {
+          existing.mapX = node.mapX;
+          existing.mapY = node.mapY;
+        }
         return;
       }
 
@@ -1505,18 +1534,30 @@
 
     const roots = objectiveChildren("");
     const linkedTasks = state.objectives.filter((node) => node.taskId && findTask(node.taskId)).length;
+    const view = objectiveView();
 
     refs.objectiveRootToggle?.classList.toggle("is-hidden", objectiveRootOpen);
     refs.objectiveRootForm?.classList.toggle("is-hidden", !objectiveRootOpen);
+    refs.objectiveTree?.classList.toggle("is-hidden", view !== "list");
+    refs.objectiveMindmap?.classList.toggle("is-hidden", view !== "mindmap");
+    refs.objectiveCanvas?.classList.toggle("is-mindmap", view === "mindmap");
     refs.objectiveCount.textContent = `${state.objectives.length} item${state.objectives.length === 1 ? "" : "s"}`;
     refs.objectiveStatus.textContent = linkedTasks ? `${linkedTasks} task${linkedTasks === 1 ? "" : "s"} linked` : "";
+    renderObjectiveViewToggle();
     refs.objectiveTree.innerHTML = "";
+    if (refs.objectiveMindmap) {
+      refs.objectiveMindmap.innerHTML = "";
+    }
 
     if (!roots.length) {
-      const empty = document.createElement("li");
-      empty.className = "empty";
-      empty.textContent = "Add your first objective";
-      refs.objectiveTree.appendChild(empty);
+      if (view === "mindmap") {
+        renderMindmap(roots);
+      } else {
+        const empty = document.createElement("li");
+        empty.className = "empty";
+        empty.textContent = "Add your first objective";
+        refs.objectiveTree.appendChild(empty);
+      }
       return;
     }
 
@@ -1536,6 +1577,217 @@
     roots.forEach((node) => {
       refs.objectiveTree.appendChild(createObjectiveItem(node, 0));
     });
+
+    if (view === "mindmap") {
+      renderMindmap(roots);
+    }
+  }
+
+  function objectiveView() {
+    return state.objectiveView === "mindmap" ? "mindmap" : "list";
+  }
+
+  function toggleObjectiveView() {
+    state.objectiveView = objectiveView() === "mindmap" ? "list" : "mindmap";
+    objectiveMenuId = null;
+    objectiveRenameId = null;
+    objectiveDraftParentId = null;
+    saveState();
+    renderMap();
+  }
+
+  function renderObjectiveViewToggle() {
+    if (!refs.objectiveViewToggle) {
+      return;
+    }
+
+    const isMindmap = objectiveView() === "mindmap";
+    refs.objectiveViewToggle.setAttribute("aria-label", isMindmap ? "List" : "Mind map");
+    refs.objectiveViewToggle.dataset.tooltip = isMindmap ? "List" : "Mind map";
+    refs.objectiveViewToggle.setAttribute("aria-pressed", String(isMindmap));
+    refs.objectiveViewToggle.replaceChildren(createControlIcon(isMindmap ? "list" : "mindmap"));
+  }
+
+  function renderMindmap(roots) {
+    if (!refs.objectiveMindmap) {
+      return;
+    }
+
+    refs.objectiveMindmap.innerHTML = "";
+
+    if (!roots.length) {
+      const empty = document.createElement("div");
+      empty.className = "mindmap-empty";
+      empty.textContent = "Add your first objective";
+      refs.objectiveMindmap.appendChild(empty);
+      refs.objectiveMindmap.style.minWidth = "";
+      refs.objectiveMindmap.style.minHeight = "";
+      return;
+    }
+
+    const layout = objectiveMindmapLayout(roots);
+    const svg = createSvg("svg");
+    svg.classList.add("mindmap-links");
+    svg.setAttribute("width", String(layout.width));
+    svg.setAttribute("height", String(layout.height));
+    svg.setAttribute("viewBox", `0 0 ${layout.width} ${layout.height}`);
+    refs.objectiveMindmap.style.minWidth = `${layout.width}px`;
+    refs.objectiveMindmap.style.minHeight = `${layout.height}px`;
+    refs.objectiveMindmap.appendChild(svg);
+    renderMindmapLinks(svg, layout.positions);
+
+    orderedObjectivesForMindmap(roots).forEach((node) => {
+      const position = layout.positions.get(node.id);
+      if (!position) {
+        return;
+      }
+
+      const button = document.createElement("button");
+      button.className = "mindmap-node";
+      button.classList.toggle("is-root", !node.parentId);
+      button.classList.toggle("is-task", Boolean(node.taskId && findTask(node.taskId)));
+      button.classList.toggle("is-selected", selectedObjectiveId === node.id);
+      button.classList.toggle("is-masked", objectiveMaskedInPath(node.id));
+      button.type = "button";
+      button.dataset.id = node.id;
+      button.style.transform = `translate3d(${position.x}px, ${position.y}px, 0)`;
+      button.setAttribute("aria-label", node.text);
+
+      const title = document.createElement("span");
+      title.className = "mindmap-title";
+      title.textContent = node.text;
+      button.appendChild(title);
+
+      const metaText = objectiveMeta(node);
+      if (metaText) {
+        const meta = document.createElement("span");
+        meta.className = "mindmap-meta";
+        meta.textContent = metaText;
+        button.appendChild(meta);
+      }
+
+      refs.objectiveMindmap.appendChild(button);
+    });
+  }
+
+  function orderedObjectivesForMindmap(roots) {
+    const ordered = [];
+    const walk = (node) => {
+      ordered.push(node);
+      objectiveChildren(node.id).forEach(walk);
+    };
+
+    roots.forEach(walk);
+    return ordered;
+  }
+
+  function objectiveMindmapLayout(roots) {
+    const autoPositions = new Map();
+    let cursorY = 32;
+
+    const place = (node, depth) => {
+      const children = objectiveChildren(node.id);
+      const childYs = children.map((child) => place(child, depth + 1));
+      const y = childYs.length ? (childYs[0] + childYs[childYs.length - 1]) / 2 : cursorY;
+      if (!childYs.length) {
+        cursorY += MINDMAP_ROW_GAP;
+      }
+
+      autoPositions.set(node.id, {
+        x: 28 + depth * MINDMAP_COLUMN_GAP,
+        y
+      });
+
+      return y;
+    };
+
+    roots.forEach((root, index) => {
+      if (index > 0) {
+        cursorY += 26;
+      }
+      place(root, 0);
+    });
+
+    const positions = new Map();
+    state.objectives.forEach((node) => {
+      const automatic = autoPositions.get(node.id);
+      if (!automatic) {
+        return;
+      }
+
+      positions.set(node.id, {
+        x: Number.isFinite(node.mapX) ? node.mapX : automatic.x,
+        y: Number.isFinite(node.mapY) ? node.mapY : automatic.y
+      });
+    });
+
+    const values = Array.from(positions.values());
+    const width = Math.max(640, Math.ceil(Math.max(...values.map((item) => item.x)) + MINDMAP_NODE_WIDTH + 64));
+    const height = Math.max(420, Math.ceil(Math.max(...values.map((item) => item.y)) + MINDMAP_NODE_HEIGHT + 64));
+
+    return { positions, width, height };
+  }
+
+  function renderMindmapLinks(svg, positions) {
+    svg.innerHTML = "";
+
+    state.objectives.forEach((node) => {
+      if (!node.parentId) {
+        return;
+      }
+
+      const parent = findObjective(node.parentId);
+      const parentPosition = parent ? positions.get(parent.id) : null;
+      const childPosition = positions.get(node.id);
+      if (!parentPosition || !childPosition) {
+        return;
+      }
+
+      const path = createSvg("path");
+      const startX = parentPosition.x + MINDMAP_NODE_WIDTH;
+      const startY = parentPosition.y + MINDMAP_NODE_HEIGHT / 2;
+      const endX = childPosition.x;
+      const endY = childPosition.y + MINDMAP_NODE_HEIGHT / 2;
+      const curve = Math.max(54, (endX - startX) * 0.52);
+      path.setAttribute("d", `M ${startX} ${startY} C ${startX + curve} ${startY}, ${endX - curve} ${endY}, ${endX} ${endY}`);
+      path.classList.toggle("is-muted", objectiveMaskedInPath(node.id) || objectiveMaskedInPath(parent.id));
+      svg.appendChild(path);
+    });
+  }
+
+  function refreshMindmapLinks() {
+    if (!refs.objectiveMindmap) {
+      return;
+    }
+
+    const layout = objectiveMindmapLayout(objectiveChildren(""));
+    const svg = refs.objectiveMindmap.querySelector(".mindmap-links");
+    if (!svg) {
+      return;
+    }
+
+    refs.objectiveMindmap.style.minWidth = `${layout.width}px`;
+    refs.objectiveMindmap.style.minHeight = `${layout.height}px`;
+    svg.setAttribute("width", String(layout.width));
+    svg.setAttribute("height", String(layout.height));
+    svg.setAttribute("viewBox", `0 0 ${layout.width} ${layout.height}`);
+    renderMindmapLinks(svg, layout.positions);
+  }
+
+  function createSvg(name) {
+    return document.createElementNS("http://www.w3.org/2000/svg", name);
+  }
+
+  function objectiveMaskedInPath(id) {
+    let node = findObjective(id);
+    while (node) {
+      if (node.masked) {
+        return true;
+      }
+      node = node.parentId ? findObjective(node.parentId) : null;
+    }
+
+    return false;
   }
 
   function createObjectiveItem(node, depth) {
@@ -2323,6 +2575,93 @@
     objectiveDrag?.preview?.remove();
   }
 
+  function handleMindmapPointerDown(event) {
+    if (objectiveView() !== "mindmap" || (event.button !== undefined && event.button !== 0)) {
+      return;
+    }
+
+    const nodeElement = event.target.closest?.(".mindmap-node");
+    if (!nodeElement || !refs.objectiveMindmap?.contains(nodeElement)) {
+      return;
+    }
+
+    const node = findObjective(nodeElement.dataset.id);
+    if (!node) {
+      return;
+    }
+
+    const layout = objectiveMindmapLayout(objectiveChildren(""));
+    const position = layout.positions.get(node.id);
+    if (!position) {
+      return;
+    }
+
+    mindmapDrag = {
+      id: node.id,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      nodeX: position.x,
+      nodeY: position.y,
+      active: false,
+      element: nodeElement
+    };
+  }
+
+  function handleMindmapPointerMove(event) {
+    if (!mindmapDrag || mindmapDrag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const distance = Math.hypot(event.clientX - mindmapDrag.startX, event.clientY - mindmapDrag.startY);
+    if (!mindmapDrag.active && distance < 3) {
+      return;
+    }
+
+    event.preventDefault();
+    mindmapDrag.active = true;
+    document.body.classList.add("is-mindmap-dragging");
+
+    const node = findObjective(mindmapDrag.id);
+    if (!node) {
+      cancelMindmapPointer();
+      return;
+    }
+
+    node.mapX = clamp(mindmapDrag.nodeX + event.clientX - mindmapDrag.startX, 8, 6000);
+    node.mapY = clamp(mindmapDrag.nodeY + event.clientY - mindmapDrag.startY, 8, 6000);
+    mindmapDrag.element.style.transform = `translate3d(${node.mapX}px, ${node.mapY}px, 0)`;
+    mindmapDrag.element.classList.add("is-dragging");
+    refreshMindmapLinks();
+  }
+
+  function endMindmapPointer(event) {
+    if (!mindmapDrag || (event && mindmapDrag.pointerId !== event.pointerId)) {
+      return;
+    }
+
+    const wasDragging = mindmapDrag.active;
+    selectedObjectiveId = mindmapDrag.id;
+    document.body.classList.remove("is-mindmap-dragging");
+    mindmapDrag = null;
+
+    if (wasDragging) {
+      saveState({ immediate: true });
+    }
+
+    renderMap();
+  }
+
+  function cancelMindmapPointer() {
+    if (!mindmapDrag) {
+      return;
+    }
+
+    document.body.classList.remove("is-mindmap-dragging");
+    mindmapDrag = null;
+    renderMap();
+  }
+
   function objectiveDragTargetFromItem(item) {
     const id = item?.dataset.objectiveId;
     const node = id ? findObjective(id) : null;
@@ -2374,13 +2713,28 @@
     return true;
   }
 
-  function closeObjectiveMenuOutside(event) {
-    if (!objectiveMenuId || event.target.closest(".objective-more-wrap")) {
-      return;
+  function closeObjectiveChromeOutside(event) {
+    let changed = false;
+    const closest = (selector) => event.target?.closest?.(selector);
+
+    if (
+      objectiveRootOpen &&
+      !closest("#objectiveRootForm") &&
+      !closest("#objectiveRootToggle")
+    ) {
+      objectiveRootOpen = false;
+      refs.objectiveRootInput.value = "";
+      changed = true;
     }
 
-    objectiveMenuId = null;
-    renderMap();
+    if (objectiveMenuId && !closest(".objective-more-wrap")) {
+      objectiveMenuId = null;
+      changed = true;
+    }
+
+    if (changed) {
+      renderMap();
+    }
   }
 
   function objectiveIsCollapsed(id) {
@@ -2848,6 +3202,8 @@
     const paths = {
       chevron: ["m6 9 6 6 6-6"],
       check: ["m5 12 4 4 10-10"],
+      list: ["M8 6h12", "M8 12h12", "M8 18h12", "M4 6h.01", "M4 12h.01", "M4 18h.01"],
+      mindmap: ["M12 5v5", "M7 15h10", "M7 15v4", "M17 15v4", "M12 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4", "M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4", "M17 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4"],
       step: ["M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16"],
       task: ["M5 5h14v14H5z", "m8 9 2 2 4-4"],
       trash: ["M4 7h16", "M10 11v6", "M14 11v6", "M6 7l1 13h10l1-13", "M9 7V5h6v2"]
@@ -3714,6 +4070,8 @@
     objectiveRootOpen = false;
     objectiveMenuId = null;
     objectiveRenameId = null;
+    mindmapDrag = null;
+    document.body.classList.remove("is-mindmap-dragging");
     activeView = "map";
     lastSyncedInput = "";
     refs.taskInput.value = "";
@@ -3736,6 +4094,8 @@
     objectiveRootOpen = false;
     objectiveMenuId = null;
     objectiveRenameId = null;
+    mindmapDrag = null;
+    document.body.classList.remove("is-mindmap-dragging");
     lastSignalUrl = "";
     lastSyncedInput = "";
     refs.recoveryForm.reset();
