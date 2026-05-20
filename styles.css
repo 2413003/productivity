@@ -356,6 +356,23 @@ summary:focus-visible {
   width: min(100%, 820px);
 }
 
+.map.is-mindmap-view {
+  position: relative;
+  width: 100%;
+}
+
+.map.is-mindmap-view .map-head {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  pointer-events: none;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .map-head {
   align-items: flex-end;
   margin-bottom: clamp(18px, 4vw, 28px);
@@ -385,6 +402,22 @@ summary:focus-visible {
   gap: 8px;
 }
 
+.map.is-mindmap-view .map-tools {
+  position: absolute;
+  top: 10px;
+  left: calc(50% - 50vw + clamp(12px, 2vw, 32px));
+  z-index: 30;
+  flex-direction: row-reverse;
+  gap: 6px;
+  opacity: 0.38;
+  transition: opacity 140ms ease;
+}
+
+.map.is-mindmap-view .map-tools:hover,
+.map.is-mindmap-view .map-tools:focus-within {
+  opacity: 1;
+}
+
 .map-add-trigger,
 .map-view-trigger {
   position: relative;
@@ -400,6 +433,29 @@ summary:focus-visible {
   color: var(--muted);
   padding: 0;
   transition: background 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.map.is-mindmap-view .map-add-trigger,
+.map.is-mindmap-view .map-view-trigger {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  background: rgba(255, 255, 255, 0.76);
+  backdrop-filter: blur(12px);
+}
+
+.map.is-mindmap-view .map-add-trigger {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.94);
+}
+
+.map.is-mindmap-view .map-tools:hover .map-add-trigger,
+.map.is-mindmap-view .map-add-trigger:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
 }
 
 .map-add-trigger:hover,
@@ -456,6 +512,17 @@ summary:focus-visible {
   margin-bottom: 10px;
 }
 
+.map.is-mindmap-view .map-form:not(.is-hidden) {
+  position: absolute;
+  top: 10px;
+  left: calc(50% - 50vw + clamp(12px, 2vw, 32px));
+  z-index: 35;
+  width: min(520px, calc(100vw - (clamp(12px, 2vw, 32px) * 2)));
+  margin: 0;
+  background: rgba(247, 248, 244, 0.72);
+  backdrop-filter: blur(14px);
+}
+
 .map-form input,
 .objective-child-form input,
 .objective-rename-form input {
@@ -483,6 +550,13 @@ summary:focus-visible {
   border-top: 0;
   overscroll-behavior: contain;
   scrollbar-width: none;
+}
+
+.map.is-mindmap-view .map-canvas.is-mindmap {
+  height: calc(100svh - 112px);
+  min-height: 420px;
+  max-height: 760px;
+  margin-top: 0;
 }
 
 .map-canvas.is-mindmap::-webkit-scrollbar {

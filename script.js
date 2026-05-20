@@ -23,6 +23,7 @@
   const refs = {
     screens: Array.from(document.querySelectorAll("[data-screen]")),
     viewButtons: Array.from(document.querySelectorAll("[data-view-button]")),
+    objectiveMap: document.getElementById("objectiveMap"),
     objectiveRootToggle: document.getElementById("objectiveRootToggle"),
     objectiveRootForm: document.getElementById("objectiveRootForm"),
     objectiveRootInput: document.getElementById("objectiveRootInput"),
@@ -1544,6 +1545,7 @@
     const linkedTasks = state.objectives.filter((node) => node.taskId && findTask(node.taskId)).length;
     const view = objectiveView();
 
+    refs.objectiveMap?.classList.toggle("is-mindmap-view", view === "mindmap");
     refs.objectiveRootToggle?.classList.toggle("is-hidden", objectiveRootOpen);
     refs.objectiveViewToggle?.classList.toggle("is-hidden", objectiveRootOpen);
     refs.objectiveRootForm?.classList.toggle("is-hidden", !objectiveRootOpen);
