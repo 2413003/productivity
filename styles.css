@@ -450,7 +450,7 @@ summary:focus-visible {
 
 .map-canvas {
   margin-top: 18px;
-  overflow-x: auto;
+  overflow: visible;
   border-top: 1px solid var(--line);
 }
 
@@ -488,7 +488,6 @@ summary:focus-visible {
   align-items: center;
   min-height: 40px;
   margin: 2px 0;
-  animation: rowIn 220ms ease both;
 }
 
 .objective-toggle,
