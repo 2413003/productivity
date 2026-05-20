@@ -5,6 +5,7 @@
   const BACKEND_CONFIG_KEY = "do-supabase-config-v1";
   const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
   const SPRINT_MS = 60000;
+  const BRANCH_MOTION_MS = 190;
   const TABLES = {
     profiles: "do_task_bracket_v1_profiles",
     tasks: "do_task_bracket_v1_tasks",
@@ -133,6 +134,9 @@
   let objectiveDraftParentId = null;
   let selectedObjectiveId = null;
   let objectiveRootOpen = false;
+  let openingObjectiveIds = new Set();
+  let closingObjectiveIds = new Set();
+  let branchMotionTimers = new Map();
   let cloudSchema = {
     profileDraft: null,
     profileObjectives: null,
@@ -1518,12 +1522,16 @@
     const children = objectiveChildren(node.id);
     const isDrafting = objectiveDraftParentId === node.id;
     const hasBranch = children.length || isDrafting;
+    const isOpening = openingObjectiveIds.has(node.id);
+    const isClosing = closingObjectiveIds.has(node.id);
     const isCollapsed = hasBranch && objectiveIsCollapsed(node.id) && !isDrafting;
     const item = document.createElement("li");
     item.className = "objective-item";
     item.classList.toggle("is-task-item", isLinkedTask);
     item.classList.toggle("is-selected", selectedObjectiveId === node.id);
     item.classList.toggle("is-collapsed", isCollapsed);
+    item.classList.toggle("is-opening", isOpening);
+    item.classList.toggle("is-collapsing", isClosing);
     item.classList.toggle("has-branch", Boolean(children.length));
     item.style.animationDelay = `${Math.min(depth, 7) * 24}ms`;
     item.style.setProperty("--depth", depth);
@@ -1577,9 +1585,11 @@
       item.appendChild(createObjectiveDraftForm(node.id));
     }
 
-    if (children.length && !isCollapsed) {
+    if (children.length && (!isCollapsed || isClosing)) {
       const childList = document.createElement("ul");
-      childList.className = "objective-list";
+      childList.className = "objective-list objective-branch";
+      childList.classList.toggle("is-opening", isOpening);
+      childList.classList.toggle("is-closing", isClosing);
       children.forEach((child) => {
         childList.appendChild(createObjectiveItem(child, depth + 1));
       });
@@ -1899,24 +1909,54 @@
     return (state.collapsedObjectives || []).includes(id);
   }
 
-  function expandObjective(id) {
+  function expandObjective(id, animate = false) {
+    const wasCollapsed = objectiveIsCollapsed(id);
     state.collapsedObjectives = (state.collapsedObjectives || []).filter((item) => item !== id);
+    closingObjectiveIds.delete(id);
+    if (animate && wasCollapsed) {
+      startBranchMotion(id, "opening");
+    }
   }
 
   function toggleObjectiveBranch(id) {
     const collapsed = new Set(state.collapsedObjectives || []);
     if (collapsed.has(id)) {
       collapsed.delete(id);
+      state.collapsedObjectives = Array.from(collapsed);
+      startBranchMotion(id, "opening");
     } else {
       collapsed.add(id);
       if (objectiveDraftParentId === id) {
         objectiveDraftParentId = null;
       }
+      state.collapsedObjectives = Array.from(collapsed);
+      startBranchMotion(id, "closing");
     }
 
-    state.collapsedObjectives = Array.from(collapsed);
     saveState();
     render();
+  }
+
+  function startBranchMotion(id, direction) {
+    window.clearTimeout(branchMotionTimers.get(id));
+    openingObjectiveIds.delete(id);
+    closingObjectiveIds.delete(id);
+
+    if (direction === "opening") {
+      openingObjectiveIds.add(id);
+    } else {
+      closingObjectiveIds.add(id);
+    }
+
+    branchMotionTimers.set(
+      id,
+      window.setTimeout(() => {
+        openingObjectiveIds.delete(id);
+        closingObjectiveIds.delete(id);
+        branchMotionTimers.delete(id);
+        render();
+      }, BRANCH_MOTION_MS)
+    );
   }
 
   function deleteObjective(id) {
@@ -1936,6 +1976,12 @@
 
     state.objectives = state.objectives.filter((node) => !removeIds.has(node.id));
     state.collapsedObjectives = (state.collapsedObjectives || []).filter((nodeId) => !removeIds.has(nodeId));
+    removeIds.forEach((nodeId) => {
+      window.clearTimeout(branchMotionTimers.get(nodeId));
+      branchMotionTimers.delete(nodeId);
+      openingObjectiveIds.delete(nodeId);
+      closingObjectiveIds.delete(nodeId);
+    });
     if (removeIds.has(objectiveDraftParentId)) {
       objectiveDraftParentId = null;
     }
