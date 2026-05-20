@@ -2255,7 +2255,8 @@
 
     const action = button.dataset.action;
     if (action === "select") {
-      selectedObjectiveId = button.dataset.id || null;
+      const id = button.dataset.id || null;
+      selectedObjectiveId = selectedObjectiveId === id ? null : id;
       objectiveMenuId = null;
       render();
       return;
@@ -2704,7 +2705,8 @@
     }
 
     const wasDragging = mindmapDrag.active;
-    selectedObjectiveId = mindmapDrag.id;
+    const id = mindmapDrag.id;
+    selectedObjectiveId = !wasDragging && selectedObjectiveId === id ? null : id;
     document.body.classList.remove("is-mindmap-dragging");
     mindmapDrag = null;
 
