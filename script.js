@@ -1557,6 +1557,8 @@
     item.classList.toggle("is-renaming", objectiveRenameId === node.id);
     item.classList.toggle("is-masked", Boolean(node.masked));
     item.classList.toggle("is-dragging", objectiveDrag?.id === node.id);
+    item.classList.toggle("is-drop-before", objectiveDrag?.dropTargetId === node.id && !objectiveDrag.dropAfter);
+    item.classList.toggle("is-drop-after", objectiveDrag?.dropTargetId === node.id && Boolean(objectiveDrag.dropAfter));
     item.classList.toggle("has-branch", Boolean(children.length));
     item.dataset.objectiveId = node.id;
     item.style.animationDelay = `${Math.min(depth, 7) * 24}ms`;
@@ -2167,13 +2169,28 @@
     }
 
     event.preventDefault();
+    updateObjectiveDragPreview(event.clientX, event.clientY);
+
     const target = objectiveDragTarget(event.clientX, event.clientY);
-    if (!target || target.id === objectiveDrag.id || target.parentId !== objectiveDrag.parentId) {
+    if (!target || target.parentId !== objectiveDrag.parentId) {
+      if (objectiveDrag.dropTargetId) {
+        objectiveDrag.dropTargetId = null;
+        objectiveDrag.dropAfter = false;
+        renderMap();
+      }
+      return;
+    }
+
+    if (target.id === objectiveDrag.id) {
       return;
     }
 
     const after = event.clientY > target.midY;
-    if (moveObjectiveNear(objectiveDrag.id, target.id, after)) {
+    const dropChanged = objectiveDrag.dropTargetId !== target.id || objectiveDrag.dropAfter !== after;
+    objectiveDrag.dropTargetId = target.id;
+    objectiveDrag.dropAfter = after;
+
+    if (moveObjectiveNear(objectiveDrag.id, target.id, after) || dropChanged) {
       renderMap();
     }
   }
@@ -2184,10 +2201,19 @@
       return;
     }
 
+    const sourceRow = objectiveItemElement(id)?.querySelector(":scope > .objective-node");
+    const sourceBox = sourceRow?.getBoundingClientRect();
+    const preview = createObjectiveDragPreview(node, sourceBox?.width || 280);
+
     objectiveDrag = {
       id,
       parentId: node.parentId || "",
-      pointerId
+      pointerId,
+      offsetX: sourceBox ? objectivePress.startX - sourceBox.left : 18,
+      offsetY: sourceBox ? objectivePress.startY - sourceBox.top : 18,
+      dropTargetId: null,
+      dropAfter: false,
+      preview
     };
     objectiveSuppressClick = true;
     selectedObjectiveId = id;
@@ -2195,6 +2221,8 @@
     objectiveRenameId = null;
     objectiveDraftParentId = null;
     document.body.classList.add("is-objective-dragging");
+    document.body.appendChild(preview);
+    updateObjectiveDragPreview(objectivePress.startX, objectivePress.startY);
     renderMap();
   }
 
@@ -2210,6 +2238,7 @@
       return;
     }
 
+    clearObjectiveDragPreview();
     objectiveDrag = null;
     document.body.classList.remove("is-objective-dragging");
     saveState({ immediate: true });
@@ -2227,6 +2256,7 @@
       return;
     }
 
+    clearObjectiveDragPreview();
     objectiveDrag = null;
     document.body.classList.remove("is-objective-dragging");
     renderMap();
@@ -2252,6 +2282,45 @@
       .find(Boolean);
 
     return item ? objectiveDragTargetFromItem(item) : null;
+  }
+
+  function objectiveItemElement(id) {
+    return Array.from(refs.objectiveTree?.querySelectorAll(".objective-item") || []).find(
+      (item) => item.dataset.objectiveId === id
+    );
+  }
+
+  function createObjectiveDragPreview(node, width) {
+    const preview = document.createElement("div");
+    preview.className = "objective-drag-preview";
+    preview.style.width = `${Math.min(Math.max(width, 220), 560)}px`;
+
+    const title = document.createElement("span");
+    title.className = "objective-title";
+    title.textContent = node.text;
+    preview.appendChild(title);
+
+    const metaText = objectiveMeta(node);
+    if (metaText) {
+      const meta = document.createElement("span");
+      meta.className = "objective-meta";
+      meta.textContent = metaText;
+      preview.appendChild(meta);
+    }
+
+    return preview;
+  }
+
+  function updateObjectiveDragPreview(x, y) {
+    if (!objectiveDrag?.preview) {
+      return;
+    }
+
+    objectiveDrag.preview.style.transform = `translate3d(${x - objectiveDrag.offsetX}px, ${y - objectiveDrag.offsetY}px, 0)`;
+  }
+
+  function clearObjectiveDragPreview() {
+    objectiveDrag?.preview?.remove();
   }
 
   function objectiveDragTargetFromItem(item) {

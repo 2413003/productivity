@@ -574,7 +574,7 @@ summary:focus-visible {
   border-radius: 7px;
   background: transparent;
   color: inherit;
-  cursor: grab;
+  cursor: pointer;
   padding: 7px 8px 7px 4px;
   text-align: left;
   touch-action: pan-y;
@@ -660,19 +660,60 @@ body.is-objective-dragging .objective-branch-actions {
   display: none !important;
 }
 
+body.is-objective-dragging button,
 body.is-objective-dragging .objective-pick {
   cursor: grabbing;
 }
 
 .objective-item.is-dragging > .objective-node {
   z-index: 6;
-  transform: scale(1.012);
+  opacity: 0.28;
 }
 
 .objective-item.is-dragging > .objective-node .objective-pick {
-  background: var(--panel);
-  box-shadow: 0 10px 26px rgba(21, 23, 19, 0.11);
+  background: transparent;
+  box-shadow: none;
   color: var(--ink);
+}
+
+.objective-item.is-drop-before > .objective-node::before,
+.objective-item.is-drop-after > .objective-node::after {
+  content: "";
+  position: absolute;
+  left: 30px;
+  right: 8px;
+  z-index: 7;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--ink);
+  opacity: 0.58;
+  pointer-events: none;
+}
+
+.objective-item.is-drop-before > .objective-node::before {
+  top: -3px;
+}
+
+.objective-item.is-drop-after > .objective-node::after {
+  bottom: -3px;
+}
+
+.objective-drag-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  display: grid;
+  gap: 2px;
+  pointer-events: none;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 8px 10px;
+  box-shadow: 0 14px 32px rgba(21, 23, 19, 0.14);
+  opacity: 0.96;
+  will-change: transform;
 }
 
 .objective-state {
@@ -695,14 +736,8 @@ body.is-objective-dragging .objective-pick {
 
 .objective-item:not(.is-task-item) > .objective-node:hover > .objective-branch-actions,
 .objective-item:not(.is-task-item) > .objective-node:focus-within > .objective-branch-actions,
-.objective-item.is-selected:not(.is-task-item) > .objective-node > .objective-branch-actions,
 .objective-item.is-menu-open > .objective-node > .objective-branch-actions {
   display: flex;
-}
-
-.objective-item.is-selected:not(.is-menu-open):not(.is-task-item):has(.objective-item:hover) > .objective-node > .objective-branch-actions,
-.objective-item.is-selected:not(.is-menu-open):not(.is-task-item):has(.objective-item:focus-within) > .objective-node > .objective-branch-actions {
-  display: none;
 }
 
 .objective-branch-actions.is-task-actions {
@@ -710,8 +745,15 @@ body.is-objective-dragging .objective-pick {
 }
 
 .objective-item.is-task-item > .objective-node:hover > .objective-branch-actions.is-task-actions,
-.objective-item.is-task-item > .objective-node:focus-within > .objective-branch-actions.is-task-actions {
+.objective-item.is-task-item > .objective-node:focus-within > .objective-branch-actions.is-task-actions,
+.objective-item.is-menu-open > .objective-node > .objective-branch-actions.is-task-actions {
   display: flex;
+}
+
+.objective-list:has(.objective-item.is-menu-open) .objective-item:not(.is-menu-open) > .objective-node > .objective-branch-actions,
+.objective-list:has(.objective-node:hover) .objective-item:not(.is-menu-open):not(:has(> .objective-node:hover)) > .objective-node > .objective-branch-actions,
+.objective-list:not(:has(.objective-node:hover)):has(.objective-node:focus-within) .objective-item:not(.is-menu-open):not(:has(> .objective-node:focus-within)) > .objective-node > .objective-branch-actions {
+  display: none;
 }
 
 .objective-action {
