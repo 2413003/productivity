@@ -475,7 +475,10 @@ summary:focus-visible {
 }
 
 .map-canvas.is-mindmap {
+  --mindmap-edge: clamp(12px, 2vw, 32px);
+  width: calc(100vw - (var(--mindmap-edge) * 2));
   height: clamp(360px, 58svh, 620px);
+  margin-left: calc(50% - 50vw + var(--mindmap-edge));
   overflow: auto;
   border-top: 0;
   overscroll-behavior: contain;
