@@ -1584,11 +1584,14 @@
     title.className = "objective-title";
     title.textContent = node.text;
 
-    const meta = document.createElement("span");
-    meta.className = "objective-meta";
-    meta.textContent = objectiveMeta(node);
-
-    main.append(title, meta);
+    const metaText = objectiveMeta(node);
+    main.appendChild(title);
+    if (metaText) {
+      const meta = document.createElement("span");
+      meta.className = "objective-meta";
+      meta.textContent = metaText;
+      main.appendChild(meta);
+    }
 
     pick.append(main);
     row.appendChild(pick);
@@ -1868,7 +1871,6 @@
   }
 
   function objectiveMeta(node) {
-    const childCount = objectiveChildren(node.id).length;
     const task = node.taskId ? findTask(node.taskId) : null;
 
     if (task) {
@@ -1884,7 +1886,7 @@
       return "Task";
     }
 
-    return childCount ? `${childCount} step${childCount === 1 ? "" : "s"}` : "Step";
+    return "";
   }
 
   function openRootObjectiveForm() {
