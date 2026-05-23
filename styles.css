@@ -437,14 +437,6 @@ summary:focus-visible {
   font-weight: 750;
 }
 
-.objective-bottleneck-bar output {
-  min-width: 24px;
-  color: var(--accent);
-  font-size: 0.82rem;
-  font-weight: 800;
-  text-align: center;
-}
-
 .objective-selection-bar .icon-control,
 .objective-bottleneck-bar .icon-control {
   width: 36px;
@@ -1466,10 +1458,6 @@ h2 {
   border-bottom: 1px solid var(--line);
 }
 
-.top-list .task-row:last-child {
-  border-bottom: 0;
-}
-
 .rank {
   color: var(--accent);
   font-weight: 800;
@@ -1530,6 +1518,20 @@ h2 {
   align-items: center;
   justify-self: end;
   gap: 8px;
+}
+
+.top-list .task-actions {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.top-list .task-row:hover .task-actions,
+.top-list .task-row:focus-within .task-actions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
 }
 
 .why-wrap {
@@ -1683,6 +1685,38 @@ h2 {
   gap: 8px;
 }
 
+.focus > .focus-actions,
+.focus > .options {
+  max-height: 0;
+  margin-top: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: max-height 160ms ease, margin-top 160ms ease, opacity 140ms ease, transform 140ms ease;
+}
+
+.focus:hover > .focus-actions,
+.focus:focus-within > .focus-actions {
+  max-height: 52px;
+  margin-top: 18px;
+  overflow: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.focus:hover > .options,
+.focus:focus-within > .options,
+.focus > .options[open] {
+  max-height: 720px;
+  margin-top: 28px;
+  overflow: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
 .focus-actions button {
   flex: 1;
 }
@@ -1695,6 +1729,10 @@ h2 {
   margin-top: 28px;
   border-top: 1px solid var(--line);
   color: var(--muted);
+}
+
+.focus > .options {
+  border-top: 0;
 }
 
 .options summary {

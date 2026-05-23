@@ -32,7 +32,6 @@
     objectiveBottleneckToggle: document.getElementById("objectiveBottleneckToggle"),
     objectiveBottleneckBar: document.getElementById("objectiveBottleneckBar"),
     objectiveBottleneckLabel: document.getElementById("objectiveBottleneckLabel"),
-    objectiveBottleneckCount: document.getElementById("objectiveBottleneckCount"),
     cancelBottleneckBtn: document.getElementById("cancelBottleneckBtn"),
     objectiveCanvas: document.getElementById("objectiveCanvas"),
     objectiveTree: document.getElementById("objectiveTree"),
@@ -1917,10 +1916,6 @@
     if (refs.objectiveBottleneckLabel) {
       refs.objectiveBottleneckLabel.textContent = count ? "Choose bottleneck" : "No tasks yet";
     }
-    if (refs.objectiveBottleneckCount) {
-      refs.objectiveBottleneckCount.textContent = count ? String(count) : "0";
-      refs.objectiveBottleneckCount.setAttribute("aria-label", count ? `${count} task choices` : "No task choices");
-    }
   }
 
   function renderMindmap(roots) {
@@ -2517,9 +2512,11 @@
       refs.allList.appendChild(createTaskRow(task, index + 1, "done"));
     });
 
+    const canChoose = activeTasks().length >= 2;
     refs.keepChoosing.setAttribute("aria-label", "Choose");
     refs.keepChoosing.dataset.tooltip = "Choose";
-    refs.keepChoosing.disabled = activeTasks().length < 2;
+    refs.keepChoosing.disabled = !canChoose;
+    refs.keepChoosing.classList.toggle("is-hidden", !canChoose);
     refs.resetRank.classList.remove("is-hidden");
   }
 
