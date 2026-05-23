@@ -1367,6 +1367,26 @@ button:disabled {
   margin-bottom: clamp(18px, 4vw, 30px);
 }
 
+.focus-head {
+  position: relative;
+  outline: none;
+}
+
+.focus-head .stepper {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.focus-head:hover .stepper,
+.focus-head.is-adjusting .stepper,
+.focus-head:focus-visible .stepper,
+.focus-head:has(.stepper:focus-within) .stepper {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+}
+
 h1,
 #repScore,
 #publicScore,
@@ -1533,7 +1553,8 @@ h2 {
 }
 
 .top-list .task-row:hover .task-actions,
-.top-list .task-row:focus-within .task-actions {
+.top-list .task-row:focus-within .task-actions,
+.top-list .task-row:has(.why-wrap:hover) .task-actions {
   opacity: 1;
   pointer-events: auto;
   transform: none;
@@ -1542,6 +1563,27 @@ h2 {
 .why-wrap {
   position: relative;
   display: grid;
+}
+
+.why-wrap:hover,
+.why-wrap:focus-within {
+  z-index: 110;
+}
+
+.why-wrap::after {
+  content: "";
+  position: absolute;
+  left: -760px;
+  right: 0;
+  top: 100%;
+  z-index: 89;
+  display: none;
+  height: 12px;
+}
+
+.why-wrap:hover::after,
+.why-wrap:focus-within::after {
+  display: block;
 }
 
 .row-meta {

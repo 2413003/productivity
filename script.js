@@ -53,6 +53,7 @@
     skipBtn: document.getElementById("skipBtn"),
     undoBtn: document.getElementById("undoBtn"),
     finishBtn: document.getElementById("finishBtn"),
+    focusHead: document.querySelector(".focus-head"),
     focusTitle: document.getElementById("focus-title"),
     topCount: document.getElementById("topCount"),
     lessTop: document.getElementById("lessTop"),
@@ -225,7 +226,9 @@
     window.addEventListener("click", closeObjectiveChromeOutside, true);
     document.addEventListener("pointerdown", closeObjectiveChromeOutside, true);
     document.addEventListener("pointerdown", hideDayTimerHintOutside, true);
+    document.addEventListener("pointerdown", hideFocusStepperOutside, true);
     document.addEventListener("keydown", hideDayTimerHintOnEscape);
+    document.addEventListener("keydown", hideFocusStepperOnEscape);
     refs.choiceA.addEventListener("click", () => chooseCurrent(0));
     refs.choiceB.addEventListener("click", () => chooseCurrent(1));
     refs.skipBtn.addEventListener("click", skipCurrent);
@@ -234,6 +237,7 @@
 
     refs.lessTop.addEventListener("click", () => setTopCount(-1));
     refs.moreTop.addEventListener("click", () => setTopCount(1));
+    refs.focusHead?.addEventListener("click", showFocusStepper);
     refs.keepChoosing.addEventListener("click", () => {
       startSprint();
       setView("choose");
@@ -2480,6 +2484,34 @@
   function hideDayTimerHintOnEscape(event) {
     if (event.key === "Escape") {
       refs.dayTimer?.classList.remove("is-explaining");
+    }
+  }
+
+  function showFocusStepper(event) {
+    if (event.target.closest(".stepper")) {
+      return;
+    }
+
+    refs.focusHead?.classList.add("is-adjusting");
+  }
+
+  function hideFocusStepperOutside(event) {
+    if (!refs.focusHead || refs.focusHead.contains(event.target)) {
+      return;
+    }
+
+    refs.focusHead.classList.remove("is-adjusting");
+    if (refs.focusHead.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+  }
+
+  function hideFocusStepperOnEscape(event) {
+    if (event.key === "Escape") {
+      refs.focusHead?.classList.remove("is-adjusting");
+      if (refs.focusHead?.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
     }
   }
 
