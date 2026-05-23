@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=top-count-visibility">
+    <link rel="stylesheet" href="styles.css?v=objectives-text-bump">
   </head>
   <body>
     <div class="shell">
@@ -142,19 +142,16 @@
               <p class="kicker" id="tasks-title">Tasks</p>
               <output id="draftCount" aria-live="polite">0</output>
             </div>
-            <div class="compose-controls">
-              <button class="primary" type="button" id="startBtn">Start</button>
-            </div>
             <textarea id="taskInput" spellcheck="true" placeholder="One task per line"></textarea>
           </div>
         </section>
 
         <section class="screen" data-screen="choose" aria-labelledby="choose-title">
           <div class="choice-wrap">
-            <div class="sprint">
-              <span id="timeLeft">60</span>
-              <span class="meter" aria-hidden="true"><span id="meterFill"></span></span>
-              <span id="tapCount">0</span>
+            <div class="day-timer" aria-label="Day time remaining">
+              <output id="dayTimeLeft" aria-live="polite">--</output>
+              <span class="meter day-meter" aria-hidden="true"><span id="dayMeterFill"></span></span>
+              <input id="dayEndInput" type="time" aria-label="Finish time">
             </div>
 
             <p class="kicker center" id="choose-title">Choose first</p>
@@ -224,6 +221,10 @@
                 <button type="button" id="clearAll">Clear all</button>
               </div>
               <ul class="all-list" id="allList"></ul>
+              <div class="done-block is-hidden" id="doneBlock">
+                <p class="list-label">Done</p>
+                <ul class="done-list" id="doneList"></ul>
+              </div>
             </details>
           </div>
         </section>
@@ -425,6 +426,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=top-count-visibility"></script>
+    <script src="script.js?v=objectives-text-bump"></script>
   </body>
 </html>

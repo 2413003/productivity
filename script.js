@@ -4,7 +4,7 @@
   const ACCOUNT_STORE_PREFIX = "do-account-state-v1:";
   const BACKEND_CONFIG_KEY = "do-supabase-config-v1";
   const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-  const SPRINT_MS = 60000;
+  const DEFAULT_DAY_END_TIME = "18:00";
   const PAGE_VIEW_ORDER = ["map", "input", "choose", "focus", "reputation"];
   const BRANCH_MOTION_MS = 190;
   const OBJECTIVE_DRAG_HOLD_MS = 420;
@@ -45,10 +45,9 @@
     objectiveStatus: document.getElementById("objectiveStatus"),
     taskInput: document.getElementById("taskInput"),
     draftCount: document.getElementById("draftCount"),
-    startBtn: document.getElementById("startBtn"),
-    timeLeft: document.getElementById("timeLeft"),
-    tapCount: document.getElementById("tapCount"),
-    meterFill: document.getElementById("meterFill"),
+    dayTimeLeft: document.getElementById("dayTimeLeft"),
+    dayMeterFill: document.getElementById("dayMeterFill"),
+    dayEndInput: document.getElementById("dayEndInput"),
     choiceA: document.getElementById("choiceA"),
     choiceB: document.getElementById("choiceB"),
     skipBtn: document.getElementById("skipBtn"),
@@ -60,6 +59,8 @@
     moreTop: document.getElementById("moreTop"),
     topList: document.getElementById("topList"),
     allList: document.getElementById("allList"),
+    doneBlock: document.getElementById("doneBlock"),
+    doneList: document.getElementById("doneList"),
     keepChoosing: document.getElementById("keepChoosing"),
     resetRank: document.getElementById("resetRank"),
     clearDone: document.getElementById("clearDone"),
@@ -190,7 +191,8 @@
     document.addEventListener("keydown", handlePageArrowKeydown);
 
     refs.taskInput.addEventListener("input", saveDraftInput);
-    refs.startBtn.addEventListener("click", () => applyTasks("choose"));
+    refs.dayEndInput?.addEventListener("change", saveDayEndTime);
+    refs.dayEndInput?.addEventListener("input", saveDayEndTime);
     refs.objectiveRootToggle?.addEventListener("click", openRootObjectiveForm);
     refs.objectiveViewToggle?.addEventListener("click", toggleObjectiveView);
     refs.objectiveBottleneckToggle?.addEventListener("click", toggleObjectiveBottleneckMode);
@@ -234,6 +236,7 @@
 
     refs.topList.addEventListener("click", handleTaskAction);
     refs.allList.addEventListener("click", handleTaskAction);
+    refs.doneList?.addEventListener("click", handleTaskAction);
     refs.proofList.addEventListener("click", handleProofAction);
 
     refs.resetRank.addEventListener("click", resetRank);
@@ -298,7 +301,7 @@
     handleHash();
     connectBackend();
 
-    window.setInterval(tick, 1000);
+    window.setInterval(renderDayTimer, 1000);
     render();
 
     if (pendingSupportDialog && !signInRequired()) {
@@ -327,6 +330,7 @@
       ...saved,
       objectiveView: saved.objectiveView === "mindmap" ? "mindmap" : "list",
       bottleneckTaskId: typeof saved.bottleneckTaskId === "string" ? saved.bottleneckTaskId : "",
+      dayEndTime: normalizeDayEndTime(saved.dayEndTime),
       draftText: typeof saved.draftText === "string" ? saved.draftText : "",
       topCount: clamp(Number(saved.topCount) || 3, 1, 99),
       totalTaps: Number(saved.totalTaps) || 0,
@@ -429,6 +433,7 @@
       collapsedObjectives: [],
       objectiveView: "list",
       bottleneckTaskId: "",
+      dayEndTime: DEFAULT_DAY_END_TIME,
       draftText: "",
       topCount: 1,
       totalTaps: 0,
@@ -589,15 +594,19 @@
       return "account";
     }
 
-    if (state.tasks.length) {
+    if (activeTasks().length) {
       return "focus";
     }
 
-    return hasScreen("map") ? "map" : "input";
+    return tasklessFallbackView();
   }
 
   function hasScreen(view) {
     return refs.screens.some((screen) => screen.dataset.screen === view);
+  }
+
+  function tasklessFallbackView() {
+    return hasScreen("map") ? "map" : "input";
   }
 
   function loadBackendConfig() {
@@ -766,11 +775,11 @@
 
     state = localFallbackForSession();
     state.reputation.profileId = userId;
-    lastSyncedInput = state.draftText || state.tasks.map((task) => task.text).join("\n");
+    lastSyncedInput = activeDraftText();
     saveStateLocalOnly();
 
     if (activeView === "account") {
-      activeView = state.tasks.length ? "focus" : hasScreen("map") ? "map" : "input";
+      activeView = activeTasks().length ? "focus" : tasklessFallbackView();
     }
 
     render();
@@ -927,7 +936,7 @@
     refs.recoveryForm.reset();
     clearRecoveryUrl();
     await syncNow();
-    activeView = state.tasks.length ? "focus" : "input";
+    activeView = activeTasks().length ? "focus" : "input";
     setSyncStatus("Password updated");
     render();
   }
@@ -1387,7 +1396,7 @@
     }
 
     state.currentPair = null;
-    lastSyncedInput = state.draftText || state.tasks.map((task) => task.text).join("\n");
+    lastSyncedInput = activeDraftText();
     saveStateLocalOnly();
 
     return {
@@ -1653,13 +1662,18 @@
       return;
     }
 
+    if (!shouldShowPageInPrimaryNav(nextView)) {
+      activeView = tasklessFallbackView();
+      render();
+      return;
+    }
+
     if (nextView === "choose") {
-      if (activeTasks().length < 2) {
-        activeView = "focus";
+      const active = activeTasks();
+      if (active.length < 2) {
+        activeView = active.length ? "focus" : tasklessFallbackView();
       } else {
-        if (!state.sprintEndsAt || remainingMs() <= 0) {
-          startSprint();
-        }
+        startSprint();
         ensurePair();
         activeView = "choose";
       }
@@ -1725,6 +1739,10 @@
       activeView = "account";
     }
 
+    if (isAccountDataView(activeView) && !shouldShowPageInPrimaryNav(activeView)) {
+      activeView = tasklessFallbackView();
+    }
+
     refs.screens.forEach((screen) => {
       const isActive = screen.dataset.screen === activeView;
       screen.classList.toggle("is-active", isActive);
@@ -1749,7 +1767,15 @@
   }
 
   function shouldShowPageInPrimaryNav(view) {
-    return view !== "choose" || activeTasks().length >= 2;
+    if (view === "choose") {
+      return activeTasks().length >= 2;
+    }
+
+    if (view === "focus") {
+      return activeTasks().length >= 1;
+    }
+
+    return true;
   }
 
   function renderMap() {
@@ -2347,8 +2373,12 @@
   }
 
   function renderInput() {
-    const text = state.draftText || state.tasks.map((task) => task.text).join("\n");
+    const text = activeDraftText();
     const inputIsActive = document.activeElement === refs.taskInput;
+
+    if (!inputIsActive && state.draftText !== text) {
+      state.draftText = text;
+    }
 
     if (!inputIsActive && text !== lastSyncedInput) {
       refs.taskInput.value = text;
@@ -2364,11 +2394,11 @@
     refs.choiceA.disabled = active.length < 2;
     refs.choiceB.disabled = active.length < 2;
     refs.undoBtn.disabled = !state.comparisons.length;
+    renderDayTimer();
 
     if (active.length < 2) {
       refs.choiceA.querySelector("span").textContent = active[0] ? active[0].text : "Add tasks";
       refs.choiceB.querySelector("span").textContent = "Top";
-      updateSprintMeta();
       return;
     }
 
@@ -2381,7 +2411,21 @@
 
     refs.choiceA.querySelector("span").textContent = pair[0].text;
     refs.choiceB.querySelector("span").textContent = pair[1].text;
-    updateSprintMeta();
+  }
+
+  function renderDayTimer() {
+    if (!refs.dayTimeLeft || !refs.dayMeterFill || !refs.dayEndInput) {
+      return;
+    }
+
+    const finishTime = normalizeDayEndTime(state.dayEndTime);
+    if (document.activeElement !== refs.dayEndInput) {
+      refs.dayEndInput.value = finishTime;
+    }
+
+    const timing = dayTiming(finishTime);
+    refs.dayTimeLeft.textContent = timing.remainingMs > 0 ? formatDuration(timing.remainingMs) : "Done";
+    refs.dayMeterFill.style.transform = `scaleX(${timing.progress})`;
   }
 
   function renderFocus() {
@@ -2409,9 +2453,20 @@
     }
 
     refs.allList.innerHTML = "";
-    rankedTasks().forEach((task, index) => {
-      refs.allList.appendChild(createTaskRow(task, index + 1, task.done ? "restore" : "done"));
+    ranked.forEach((task, index) => {
+      refs.allList.appendChild(createTaskRow(task, index + 1, "done"));
     });
+
+    const doneTasks = [...state.tasks]
+      .filter((task) => task.done)
+      .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    if (refs.doneBlock && refs.doneList) {
+      refs.doneBlock.classList.toggle("is-hidden", !doneTasks.length);
+      refs.doneList.innerHTML = "";
+      doneTasks.forEach((task, index) => {
+        refs.doneList.appendChild(createTaskRow(task, index + 1, "restore"));
+      });
+    }
 
     refs.keepChoosing.setAttribute("aria-label", "Choose");
     refs.keepChoosing.dataset.tooltip = "Choose";
@@ -3673,7 +3728,7 @@
   }
 
   function syncDraftFromTasks() {
-    state.draftText = state.tasks.map((task) => task.text).join("\n");
+    state.draftText = activeTaskText();
     lastSyncedInput = state.draftText;
     if (document.activeElement !== refs.taskInput) {
       refs.taskInput.value = state.draftText;
@@ -3971,14 +4026,9 @@
 
     const path = document.createElement("span");
     path.className = "why-map-path";
+    path.style.setProperty("--why-node-count", String(nodes.length));
 
     nodes.forEach((node, index) => {
-      if (index > 0) {
-        const connector = document.createElement("span");
-        connector.className = "why-map-connector";
-        path.appendChild(connector);
-      }
-
       const item = document.createElement("span");
       item.className = "why-map-node";
       item.classList.toggle("is-root", index === 0);
@@ -4048,7 +4098,6 @@
   function updateDraftCount() {
     const count = parseTasks(refs.taskInput.value).length;
     refs.draftCount.textContent = String(count);
-    refs.startBtn.disabled = count === 0;
   }
 
   function saveDraftInput() {
@@ -4057,31 +4106,31 @@
     saveState();
   }
 
-  function draftChanged() {
-    const draft = parseTasks(refs.taskInput.value).join("\n");
-    const saved = state.tasks.map((task) => task.text).join("\n");
-    return draft !== saved;
+  function saveDayEndTime() {
+    state.dayEndTime = normalizeDayEndTime(refs.dayEndInput.value);
+    renderDayTimer();
+    saveState();
   }
 
-  function updateSprintMeta() {
-    const ms = remainingMs();
-    const seconds = Math.ceil(ms / 1000);
-    const taps = Math.max(0, state.totalTaps - state.sprintStartTaps);
-    const progress = state.sprintEndsAt ? clamp(ms / SPRINT_MS, 0, 1) : 1;
-
-    refs.timeLeft.textContent = String(seconds || 0);
-    refs.tapCount.textContent = String(taps);
-    refs.meterFill.style.transform = `scaleX(${progress})`;
+  function draftChanged() {
+    const draft = parseTasks(refs.taskInput.value).join("\n");
+    const saved = activeTaskText();
+    return draft !== saved;
   }
 
   function applyTasks(preferredView) {
     const parsed = parseTasks(refs.taskInput.value);
     const existing = new Map(state.tasks.map((task) => [task.text.toLowerCase(), task]));
+    const parsedKeys = new Set(parsed.map((text) => text.toLowerCase()));
+    const restoredTaskIds = new Set();
 
-    state.tasks = parsed.map((text) => {
+    const active = parsed.map((text) => {
       const saved = existing.get(text.toLowerCase());
       if (saved) {
-        return { ...saved, text };
+        if (saved.done) {
+          restoredTaskIds.add(saved.id);
+        }
+        return { ...saved, text, done: false, doneAt: null };
       }
 
       return {
@@ -4097,15 +4146,25 @@
         createdAt: Date.now() + Math.random()
       };
     });
+    const completed = state.tasks.filter((task) => task.done && !parsedKeys.has(task.text.toLowerCase()));
+
+    if (restoredTaskIds.size) {
+      state.reputation.proofs = state.reputation.proofs.filter((proof) => !restoredTaskIds.has(proof.taskId));
+    }
+
+    state.tasks = [...active, ...completed];
 
     state.comparisons = [];
     state.pairHistory = [];
     state.currentPair = null;
-    state.topCount = clamp(state.topCount, 1, Math.max(1, state.tasks.length));
-    state.draftText = state.tasks.map((task) => task.text).join("\n");
+    state.topCount = clamp(state.topCount, 1, Math.max(1, activeTasks().length));
+    state.draftText = activeTaskText();
     lastSyncedInput = state.draftText;
 
-    if (activeTasks().length > 1 && preferredView !== "focus") {
+    const activeAfterApply = activeTasks();
+    if (!activeAfterApply.length) {
+      activeView = tasklessFallbackView();
+    } else if (activeAfterApply.length > 1 && preferredView !== "focus") {
       startSprint();
       activeView = "choose";
     } else {
@@ -4149,11 +4208,6 @@
 
     rememberPair(winner.id, loser.id);
     state.currentPair = choosePair(pairKey(winner.id, loser.id));
-
-    if (remainingMs() <= 0) {
-      state.sprintEndsAt = null;
-      activeView = "focus";
-    }
 
     saveState();
     render();
@@ -4228,6 +4282,7 @@
       state.reputation.proofs = state.reputation.proofs.filter((proof) => proof.taskId !== task.id);
     }
 
+    syncDraftFromTasks();
     state.currentPair = null;
     ensurePair();
     saveState();
@@ -4289,6 +4344,7 @@
 
       state.currentPair = null;
       ensurePair();
+      syncDraftFromTasks();
       saveState();
     }
 
@@ -4896,7 +4952,7 @@
   function clearDone() {
     const removed = new Set(state.tasks.filter((task) => task.done).map((task) => task.id));
     state.tasks = state.tasks.filter((task) => !task.done);
-    state.draftText = state.tasks.map((task) => task.text).join("\n");
+    state.draftText = activeTaskText();
     state.reputation.proofs = state.reputation.proofs.filter((proof) => !removed.has(proof.taskId));
     state.currentPair = null;
     state.comparisons = [];
@@ -4970,26 +5026,10 @@
   }
 
   function startSprint() {
-    state.sprintEndsAt = Date.now() + SPRINT_MS;
+    state.sprintEndsAt = null;
     state.sprintStartTaps = state.totalTaps;
     ensurePair();
     saveState();
-  }
-
-  function tick() {
-    if (activeView !== "choose") {
-      return;
-    }
-
-    if (state.sprintEndsAt && remainingMs() <= 0) {
-      state.sprintEndsAt = null;
-      activeView = state.totalTaps > state.sprintStartTaps ? "focus" : "choose";
-      saveState();
-      render();
-      return;
-    }
-
-    updateSprintMeta();
   }
 
   function ensurePair() {
@@ -5067,6 +5107,29 @@
 
   function activeTasks() {
     return state.tasks.filter((task) => !task.done);
+  }
+
+  function activeTaskText() {
+    return activeTasks()
+      .map((task) => task.text)
+      .join("\n");
+  }
+
+  function activeDraftText() {
+    const fallback = activeTaskText();
+    const draft = typeof state.draftText === "string" ? state.draftText : "";
+    if (!draft.trim()) {
+      return fallback;
+    }
+
+    const activeKeys = new Set(activeTasks().map((task) => task.text.toLowerCase()));
+    const doneKeys = new Set(state.tasks.filter((task) => task.done).map((task) => task.text.toLowerCase()));
+    return parseTasks(draft)
+      .filter((text) => {
+        const key = text.toLowerCase();
+        return activeKeys.has(key) || !doneKeys.has(key);
+      })
+      .join("\n");
   }
 
   function findTask(id) {
@@ -5173,20 +5236,49 @@
     }).format(new Date(value));
   }
 
+  function normalizeDayEndTime(value) {
+    return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : DEFAULT_DAY_END_TIME;
+  }
+
+  function dayTiming(finishTime) {
+    const now = new Date();
+    const [hours, minutes] = normalizeDayEndTime(finishTime).split(":").map(Number);
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(start);
+    end.setHours(hours, minutes, 0, 0);
+    if (hours === 0 && minutes === 0) {
+      end.setDate(end.getDate() + 1);
+    }
+
+    const totalMs = Math.max(1, end.getTime() - start.getTime());
+    const remainingMs = clamp(end.getTime() - now.getTime(), 0, totalMs);
+
+    return {
+      remainingMs,
+      progress: clamp(remainingMs / totalMs, 0, 1)
+    };
+  }
+
+  function formatDuration(ms) {
+    const totalMinutes = Math.max(1, Math.ceil(ms / 60000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    if (!hours) {
+      return `${minutes}m`;
+    }
+
+    return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+
   function toIso(value) {
     if (!value) {
       return null;
     }
 
     return new Date(value).toISOString();
-  }
-
-  function remainingMs() {
-    if (!state.sprintEndsAt) {
-      return SPRINT_MS;
-    }
-
-    return Math.max(0, state.sprintEndsAt - Date.now());
   }
 
   function rememberPair(firstId, secondId) {

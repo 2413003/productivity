@@ -258,8 +258,7 @@ summary:focus-visible {
 .action-row,
 .quiet-row,
 .focus-actions,
-.option-actions,
-.sprint {
+.option-actions {
   display: flex;
   align-items: center;
 }
@@ -315,9 +314,7 @@ summary:focus-visible {
 #draftCount,
 #objectiveCount,
 #proofCount,
-#repStatus,
-#tapCount,
-#timeLeft {
+#repStatus {
   color: var(--muted);
   font-size: 0.84rem;
   font-weight: 700;
@@ -740,6 +737,7 @@ body.is-mindmap-panning .mindmap-canvas {
 
 .mindmap-title {
   overflow-wrap: anywhere;
+  font-size: 1.03rem;
   line-height: 1.25;
 }
 
@@ -927,13 +925,14 @@ body.is-mindmap-panning .mindmap-canvas {
 .objective-title {
   overflow-wrap: anywhere;
   color: var(--ink);
+  font-size: 1.08rem;
   font-weight: 650;
   line-height: 1.32;
 }
 
 .objective-meta {
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.8rem;
   font-weight: 650;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -1224,10 +1223,19 @@ button:disabled {
   padding: 0;
 }
 
-.sprint {
-  min-height: 30px;
+.day-timer {
+  display: flex;
+  align-items: center;
   gap: 12px;
-  margin-bottom: clamp(16px, 3vw, 24px);
+  min-height: 34px;
+  margin-bottom: clamp(14px, 3vw, 22px);
+}
+
+.day-timer output {
+  min-width: 78px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 750;
 }
 
 .meter {
@@ -1247,6 +1255,25 @@ button:disabled {
   transform: scaleX(1);
   background: var(--accent);
   transition: transform 300ms linear;
+}
+
+#dayEndInput {
+  width: 82px;
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 2px;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+#dayEndInput:hover,
+#dayEndInput:focus-visible {
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--ink);
 }
 
 .choice-stack {
@@ -1378,6 +1405,7 @@ h2 {
 
 .top-list,
 .all-list,
+.done-list,
 .proof-list,
 .supporter-list {
   margin: 0;
@@ -1442,6 +1470,18 @@ h2 {
   padding: 0;
 }
 
+.task-row .row-action.icon-control::after {
+  top: auto;
+  bottom: calc(100% + 8px);
+  z-index: 120;
+  transform: translate(-50%, 3px);
+}
+
+.task-row .row-action.icon-control:hover::after,
+.task-row .row-action.icon-control:focus-visible::after {
+  transform: translate(-50%, 0);
+}
+
 .task-actions {
   display: flex;
   align-items: center;
@@ -1484,7 +1524,7 @@ h2 {
   top: calc(100% + 8px);
   right: 0;
   z-index: 90;
-  width: min(380px, calc(100vw - 32px));
+  width: min(420px, calc(100vw - 32px));
   border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--panel) 94%, transparent);
@@ -1505,21 +1545,17 @@ h2 {
 }
 
 .why-map-path {
-  display: flex;
+  --why-node-count: 1;
+  display: grid;
+  grid-template-columns: repeat(var(--why-node-count), minmax(0, 1fr));
   align-items: center;
-  gap: 7px;
-  overflow-x: auto;
-  padding-bottom: 1px;
-  scrollbar-width: none;
-}
-
-.why-map-path::-webkit-scrollbar {
-  display: none;
+  gap: 28px;
+  overflow: visible;
 }
 
 .why-map-node {
-  flex: 0 0 auto;
-  width: min(128px, 34vw);
+  position: relative;
+  width: 100%;
   min-height: 44px;
   display: grid;
   align-content: center;
@@ -1530,6 +1566,30 @@ h2 {
   color: var(--ink);
   padding: 7px 9px;
   text-align: left;
+}
+
+.why-map-node:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 7px);
+  width: 14px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transform: translateY(-50%);
+}
+
+.why-map-node:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 16px);
+  width: 6px;
+  height: 6px;
+  border-top: 2px solid var(--line-strong);
+  border-right: 2px solid var(--line-strong);
+  transform: translateY(-50%) rotate(45deg);
 }
 
 .why-map-node.is-root {
@@ -1559,26 +1619,6 @@ h2 {
   font-size: 0.74rem;
   font-weight: 720;
   line-height: 1.16;
-}
-
-.why-map-connector {
-  position: relative;
-  flex: 0 0 22px;
-  height: 2px;
-  border-radius: 999px;
-  background: var(--line-strong);
-}
-
-.why-map-connector::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  right: -1px;
-  width: 6px;
-  height: 6px;
-  border-top: 2px solid var(--line-strong);
-  border-right: 2px solid var(--line-strong);
-  transform: translateY(-50%) rotate(45deg);
 }
 
 .empty {
@@ -1648,13 +1688,30 @@ h2 {
   color: var(--danger);
 }
 
-.all-list .task-row {
+.done-block {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.list-label {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.all-list .task-row,
+.done-list .task-row {
   min-height: 50px;
   grid-template-columns: 24px minmax(0, 1fr) auto;
   font-size: 0.9rem;
 }
 
-.all-list .rank {
+.all-list .rank,
+.done-list .rank {
   color: var(--muted);
 }
 
