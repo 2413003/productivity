@@ -931,28 +931,12 @@ body.is-mindmap-panning .mindmap-canvas {
   line-height: 1.32;
 }
 
-.objective-meta,
-.task-path {
+.objective-meta {
   color: var(--muted);
   font-size: 0.76rem;
   font-weight: 650;
   line-height: 1.35;
   overflow-wrap: anywhere;
-}
-
-.task-path {
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-  transform: translateY(-2px);
-  transition: max-height 140ms ease, opacity 140ms ease, transform 140ms ease;
-}
-
-.task-row:hover .task-path,
-.task-row:focus-within .task-path {
-  max-height: 24px;
-  opacity: 1;
-  transform: translateY(0);
 }
 
 .objective-pick[aria-current="true"] .objective-title,
@@ -1465,6 +1449,11 @@ h2 {
   gap: 8px;
 }
 
+.why-wrap {
+  position: relative;
+  display: grid;
+}
+
 .row-meta {
   display: none;
   place-items: center;
@@ -1488,6 +1477,108 @@ h2 {
   border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.why-map-preview {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 90;
+  width: min(380px, calc(100vw - 32px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  box-shadow: 0 18px 45px rgba(21, 23, 19, 0.12);
+  padding: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px) scale(0.98);
+  transform-origin: top right;
+  transition: opacity 140ms ease, transform 140ms ease;
+  backdrop-filter: blur(14px);
+}
+
+.why-wrap:hover .why-map-preview,
+.why-wrap:focus-within .why-map-preview {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.why-map-path {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 1px;
+  scrollbar-width: none;
+}
+
+.why-map-path::-webkit-scrollbar {
+  display: none;
+}
+
+.why-map-node {
+  flex: 0 0 auto;
+  width: min(128px, 34vw);
+  min-height: 44px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 7px 9px;
+  text-align: left;
+}
+
+.why-map-node.is-root {
+  border-color: var(--line-strong);
+}
+
+.why-map-node.is-task {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.why-map-role {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.why-map-node.is-task .why-map-role {
+  color: currentColor;
+}
+
+.why-map-label {
+  overflow-wrap: anywhere;
+  font-size: 0.74rem;
+  font-weight: 720;
+  line-height: 1.16;
+}
+
+.why-map-connector {
+  position: relative;
+  flex: 0 0 22px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--line-strong);
+}
+
+.why-map-connector::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -1px;
+  width: 6px;
+  height: 6px;
+  border-top: 2px solid var(--line-strong);
+  border-right: 2px solid var(--line-strong);
+  transform: translateY(-50%) rotate(45deg);
 }
 
 .empty {

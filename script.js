@@ -5,6 +5,7 @@
   const BACKEND_CONFIG_KEY = "do-supabase-config-v1";
   const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
   const SPRINT_MS = 60000;
+  const PAGE_VIEW_ORDER = ["map", "input", "choose", "focus", "reputation"];
   const BRANCH_MOTION_MS = 190;
   const OBJECTIVE_DRAG_HOLD_MS = 420;
   const MINDMAP_NODE_WIDTH = 184;
@@ -143,6 +144,7 @@
   let cloudLoadedUserId = null;
   let authRefreshTimer = null;
   let authRefreshPromise = null;
+  let pendingAuthRefresh = false;
   let activeView = initialView();
   let lastSyncedInput = "";
   let accountMode = "sign-in";
@@ -185,6 +187,7 @@
     refs.viewButtons.forEach((button) => {
       button.addEventListener("click", () => setView(button.dataset.viewButton));
     });
+    document.addEventListener("keydown", handlePageArrowKeydown);
 
     refs.taskInput.addEventListener("input", saveDraftInput);
     refs.startBtn.addEventListener("click", () => applyTasks("choose"));
@@ -600,12 +603,15 @@
   function loadBackendConfig() {
     try {
       const defaultConfig = window.DO_SUPABASE_CONFIG || {};
+      const defaultUrl = typeof defaultConfig.url === "string" ? defaultConfig.url.trim() : "";
+      const defaultAnonKey = typeof defaultConfig.anonKey === "string" ? defaultConfig.anonKey.trim() : "";
+      if (defaultUrl && defaultAnonKey) {
+        return { url: defaultUrl, anonKey: defaultAnonKey };
+      }
+
       const saved = JSON.parse(localStorage.getItem(BACKEND_CONFIG_KEY) || "null");
       if (!saved || typeof saved.url !== "string" || typeof saved.anonKey !== "string") {
-        return {
-          url: typeof defaultConfig.url === "string" ? defaultConfig.url.trim() : "",
-          anonKey: typeof defaultConfig.anonKey === "string" ? defaultConfig.anonKey.trim() : ""
-        };
+        return { url: defaultUrl, anonKey: defaultAnonKey };
       }
 
       return {
@@ -659,15 +665,8 @@
           setSyncStatus("Reset password");
           render();
         } else {
-          await syncNow();
-          await processPendingSignal();
-          if (pendingSupportDialog) {
-            window.setTimeout(() => openSupportDialog(), 120);
-          }
-          if (activeView === "account") {
-            activeView = state.tasks.length ? "focus" : "input";
-          }
-          render();
+          showAuthenticatedApp();
+          continueSessionStartup();
         }
       } else {
         activeView = "account";
@@ -675,8 +674,13 @@
         render();
       }
 
-      if (pendingPublicProfileId) {
-        await loadPublicProfile(pendingPublicProfileId);
+      if (pendingPublicProfileId && !session) {
+        loadPublicProfile(pendingPublicProfileId);
+      }
+
+      if (pendingAuthRefresh) {
+        pendingAuthRefresh = false;
+        queueAuthRefresh();
       }
     } catch (error) {
       supabaseClient = null;
@@ -688,10 +692,16 @@
   }
 
   function queueAuthRefresh() {
-    if (!supabaseClient || recoveryMode) {
+    if (recoveryMode) {
       return;
     }
 
+    if (!supabaseClient) {
+      pendingAuthRefresh = true;
+      return;
+    }
+
+    pendingAuthRefresh = false;
     window.clearTimeout(authRefreshTimer);
     authRefreshTimer = window.setTimeout(() => {
       refreshAuthSessionFromStorage();
@@ -734,15 +744,8 @@
 
     if (session) {
       recoveryMode = false;
-      await syncNow();
-      await processPendingSignal();
-      if (pendingSupportDialog) {
-        window.setTimeout(() => openSupportDialog(), 120);
-      }
-      if (activeView === "account") {
-        activeView = state.tasks.length ? "focus" : "input";
-      }
-      render();
+      showAuthenticatedApp();
+      continueSessionStartup();
       return;
     }
 
@@ -753,6 +756,41 @@
       setSyncStatus("Signed out");
       render();
     }
+  }
+
+  function showAuthenticatedApp() {
+    const userId = session?.user?.id;
+    if (!userId) {
+      return;
+    }
+
+    state = localFallbackForSession();
+    state.reputation.profileId = userId;
+    lastSyncedInput = state.draftText || state.tasks.map((task) => task.text).join("\n");
+    saveStateLocalOnly();
+
+    if (activeView === "account") {
+      activeView = state.tasks.length ? "focus" : hasScreen("map") ? "map" : "input";
+    }
+
+    render();
+  }
+
+  function continueSessionStartup() {
+    (async () => {
+      await syncNow();
+      await processPendingSignal();
+      if (pendingSupportDialog) {
+        window.setTimeout(() => openSupportDialog(), 120);
+      }
+      if (pendingPublicProfileId) {
+        await loadPublicProfile(pendingPublicProfileId);
+      }
+    })().catch((error) => {
+      console.error(error);
+      setSyncStatus("Sync error");
+      render();
+    });
   }
 
   function authSessionFingerprint(value) {
@@ -785,13 +823,8 @@
     session = data.session;
     recoveryMode = false;
     clearRecoveryUrl();
-    await syncNow();
-    await processPendingSignal();
-    if (pendingSupportDialog) {
-      window.setTimeout(() => openSupportDialog(), 120);
-    }
-    activeView = state.tasks.length ? "focus" : "input";
-    render();
+    showAuthenticatedApp();
+    continueSessionStartup();
   }
 
   async function signUp() {
@@ -825,9 +858,8 @@
     if (session) {
       recoveryMode = false;
       clearRecoveryUrl();
-      await syncNow();
-      activeView = state.tasks.length ? "focus" : "input";
-      render();
+      showAuthenticatedApp();
+      continueSessionStartup();
     } else {
       setSyncStatus("Check email");
       render();
@@ -1638,6 +1670,52 @@
     render();
   }
 
+  function handlePageArrowKeydown(event) {
+    if (
+      event.defaultPrevented ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      !["ArrowLeft", "ArrowRight"].includes(event.key) ||
+      shouldIgnorePageArrow(event.target)
+    ) {
+      return;
+    }
+
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    const nextView = pageViewByOffset(direction);
+    if (!nextView || nextView === activeView) {
+      return;
+    }
+
+    event.preventDefault();
+    setView(nextView);
+  }
+
+  function shouldIgnorePageArrow(target) {
+    const element = target instanceof Element ? target : null;
+    if (!element) {
+      return false;
+    }
+
+    return Boolean(
+      document.querySelector("dialog[open]") ||
+        element.closest("input, textarea, select, [contenteditable='true'], [contenteditable=''], [role='textbox']")
+    );
+  }
+
+  function pageViewByOffset(offset) {
+    const views = PAGE_VIEW_ORDER.filter((view) => hasScreen(view) && shouldShowPageInPrimaryNav(view));
+    if (!views.length) {
+      return "";
+    }
+
+    const currentIndex = views.includes(activeView) ? views.indexOf(activeView) : offset > 0 ? -1 : 0;
+    const nextIndex = (currentIndex + offset + views.length) % views.length;
+    return views[nextIndex];
+  }
+
   function render() {
     if (!hasScreen(activeView)) {
       activeView = initialView();
@@ -1654,8 +1732,10 @@
 
     refs.viewButtons.forEach((button) => {
       const view = button.dataset.viewButton;
-      const hideForAuth = signInRequired() && isAccountDataView(view) && button.closest(".nav");
-      button.classList.toggle("is-hidden", hideForAuth);
+      const isPrimaryNav = Boolean(button.closest(".nav"));
+      const hideForAuth = signInRequired() && isAccountDataView(view) && isPrimaryNav;
+      const hideForPageState = isPrimaryNav && !shouldShowPageInPrimaryNav(view);
+      button.classList.toggle("is-hidden", hideForAuth || hideForPageState);
       button.setAttribute("aria-current", button.dataset.viewButton === activeView ? "page" : "false");
     });
 
@@ -1666,6 +1746,10 @@
     renderReputation();
     renderPublic();
     renderAccount();
+  }
+
+  function shouldShowPageInPrimaryNav(view) {
+    return view !== "choose" || activeTasks().length >= 2;
   }
 
   function renderMap() {
@@ -2307,6 +2391,7 @@
 
     refs.focusTitle.textContent = "Biggest Bottleneck";
     refs.topCount.textContent = String(topCount);
+    refs.topCount.closest(".stepper")?.classList.toggle("is-hidden", ranked.length <= 1);
     refs.lessTop.disabled = topCount <= 1;
     refs.moreTop.disabled = ranked.length > 0 && topCount >= ranked.length;
 
@@ -2344,20 +2429,11 @@
     const task = node.taskId ? findTask(node.taskId) : null;
 
     if (task) {
-      if (task.done) {
-        return "Done";
-      }
-
-      if (state.bottleneckTaskId === task.id) {
+      if (!task.done && state.bottleneckTaskId === task.id) {
         return "Bottleneck";
       }
 
-      const rank = taskRank(task.id);
-      return rank ? `Priority #${rank}` : "Task";
-    }
-
-    if (node.kind === "task") {
-      return "Task";
+      return "";
     }
 
     return "";
@@ -3623,9 +3699,24 @@
     return path;
   }
 
-  function objectivePathForTask(taskId) {
-    const node = state.objectives.find((item) => item.taskId === taskId);
-    return node ? objectivePath(node.id).slice(0, -1).join(" / ") : "";
+  function objectivePathNodesForTask(taskId) {
+    const target = state.objectives.find((item) => item.taskId === taskId);
+    if (!target) {
+      return [];
+    }
+
+    const byId = new Map(state.objectives.map((node) => [node.id, node]));
+    const path = [];
+    const seen = new Set();
+    let node = target;
+
+    while (node && !seen.has(node.id)) {
+      path.unshift(node);
+      seen.add(node.id);
+      node = byId.get(node.parentId);
+    }
+
+    return path;
   }
 
   function taskRank(taskId) {
@@ -3719,6 +3810,7 @@
   function renderAccount() {
     const email = session?.user?.email || "";
     const signedIn = Boolean(session);
+    const authReady = Boolean(supabaseClient);
 
     refs.accountName.textContent = recoveryMode
       ? "New password"
@@ -3731,10 +3823,10 @@
     refs.recoveryForm.classList.toggle("is-hidden", !recoveryMode);
     refs.accountActions.classList.toggle("is-hidden", !signedIn || recoveryMode);
     refs.signOutBtn.disabled = !signedIn;
-    refs.signInBtn.disabled = !supabaseClient || cloudBusy;
-    refs.signUpBtn.disabled = !supabaseClient || cloudBusy;
-    refs.forgotPasswordBtn.disabled = !supabaseClient || cloudBusy;
-    refs.savePasswordBtn.disabled = !supabaseClient || cloudBusy;
+    refs.signInBtn.disabled = !authReady;
+    refs.signUpBtn.disabled = !authReady;
+    refs.forgotPasswordBtn.disabled = !authReady;
+    refs.savePasswordBtn.disabled = !authReady;
   }
 
   function createProofRow(task, index) {
@@ -3828,26 +3920,30 @@
     const textNode = document.createElement("span");
     textNode.className = "task-text";
     textNode.textContent = task.text;
-
-    const pathText = objectivePathForTask(task.id);
-    if (pathText) {
-      const pathNode = document.createElement("span");
-      pathNode.className = "task-path";
-      pathNode.textContent = pathText;
-      main.append(textNode, pathNode);
-    } else {
-      main.appendChild(textNode);
-    }
+    main.appendChild(textNode);
 
     const actions = document.createElement("span");
     actions.className = "task-actions";
 
+    const objectivePathNodes = objectivePathNodesForTask(task.id);
+    const whyWrap = document.createElement("span");
+    whyWrap.className = "why-wrap";
+
     const whyButton = document.createElement("button");
-    whyButton.className = `row-meta${hasTaskContext(task) ? " is-set" : ""}`;
+    whyButton.className = `row-meta${hasTaskContext(task) || objectivePathNodes.length ? " is-set" : ""}`;
     whyButton.type = "button";
     whyButton.dataset.action = "why";
     whyButton.dataset.id = task.id;
     whyButton.textContent = "Why";
+    if (objectivePathNodes.length) {
+      whyButton.setAttribute(
+        "aria-label",
+        `Why. Objective path: ${objectivePathNodes.map((node) => node.text).join(" to ")}`
+      );
+      whyWrap.append(whyButton, createWhyMapPreview(objectivePathNodes, task.id));
+    } else {
+      whyWrap.appendChild(whyButton);
+    }
 
     const button = document.createElement("button");
     button.className = "row-action";
@@ -3863,9 +3959,45 @@
       button.appendChild(createControlIcon("check"));
     }
 
-    actions.append(whyButton, button);
+    actions.append(whyWrap, button);
     item.append(rankNode, main, actions);
     return item;
+  }
+
+  function createWhyMapPreview(nodes, taskId) {
+    const preview = document.createElement("span");
+    preview.className = "why-map-preview";
+    preview.setAttribute("aria-hidden", "true");
+
+    const path = document.createElement("span");
+    path.className = "why-map-path";
+
+    nodes.forEach((node, index) => {
+      if (index > 0) {
+        const connector = document.createElement("span");
+        connector.className = "why-map-connector";
+        path.appendChild(connector);
+      }
+
+      const item = document.createElement("span");
+      item.className = "why-map-node";
+      item.classList.toggle("is-root", index === 0);
+      item.classList.toggle("is-task", node.taskId === taskId);
+
+      const role = document.createElement("span");
+      role.className = "why-map-role";
+      role.textContent = node.taskId === taskId ? "Task" : index === 0 ? "Objective" : "Step";
+
+      const label = document.createElement("span");
+      label.className = "why-map-label";
+      label.textContent = node.text;
+
+      item.append(role, label);
+      path.appendChild(item);
+    });
+
+    preview.appendChild(path);
+    return preview;
   }
 
   function createControlIcon(name) {
