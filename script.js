@@ -2497,12 +2497,16 @@
     refs.topList.innerHTML = "";
 
     if (!ranked.length) {
+      refs.topList.classList.remove("is-single-visible", "has-multiple-visible");
       const empty = document.createElement("li");
       empty.className = "empty";
       empty.textContent = state.tasks.length ? "Done" : "Add tasks";
       refs.topList.appendChild(empty);
     } else {
-      ranked.slice(0, topCount).forEach((task, index) => {
+      const visibleTasks = ranked.slice(0, topCount);
+      refs.topList.classList.toggle("is-single-visible", visibleTasks.length === 1);
+      refs.topList.classList.toggle("has-multiple-visible", visibleTasks.length > 1);
+      visibleTasks.forEach((task, index) => {
         refs.topList.appendChild(createTaskRow(task, index + 1, "done"));
       });
     }

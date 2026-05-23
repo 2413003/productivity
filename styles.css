@@ -1458,6 +1458,11 @@ h2 {
   border-bottom: 1px solid var(--line);
 }
 
+.top-list.is-single-visible .task-row {
+  border-top: 0;
+  border-bottom: 0;
+}
+
 .rank {
   color: var(--accent);
   font-weight: 800;
@@ -1569,12 +1574,15 @@ h2 {
   top: calc(100% + 8px);
   right: 0;
   z-index: 90;
-  width: min(420px, calc(100vw - 32px));
+  width: min(760px, calc(100vw - 32px));
   border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--panel) 94%, transparent);
   box-shadow: 0 18px 45px rgba(21, 23, 19, 0.12);
   padding: 10px;
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-x: contain;
   opacity: 0;
   pointer-events: none;
   transform: translateY(-4px) scale(0.98);
@@ -1586,22 +1594,24 @@ h2 {
 .why-wrap:hover .why-map-preview,
 .why-wrap:focus-within .why-map-preview {
   opacity: 1;
+  pointer-events: auto;
   transform: translateY(0) scale(1);
 }
 
 .why-map-path {
-  --why-node-count: 1;
-  display: grid;
-  grid-template-columns: repeat(var(--why-node-count), minmax(0, 1fr));
+  display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 32px;
+  min-width: max-content;
   overflow: visible;
+  padding: 1px 2px 3px 1px;
 }
 
 .why-map-node {
   position: relative;
-  width: 100%;
-  min-height: 44px;
+  flex: 0 0 118px;
+  width: 118px;
+  min-height: 58px;
   display: grid;
   align-content: center;
   gap: 2px;
@@ -1638,10 +1648,12 @@ h2 {
 }
 
 .why-map-node.is-root {
+  flex-basis: 128px;
   border-color: var(--line-strong);
 }
 
 .why-map-node.is-task {
+  flex-basis: 132px;
   border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
   background: var(--accent-soft);
   color: var(--accent);
@@ -1649,7 +1661,7 @@ h2 {
 
 .why-map-role {
   color: var(--muted);
-  font-size: 0.58rem;
+  font-size: 0.62rem;
   font-weight: 800;
   line-height: 1;
   text-transform: uppercase;
@@ -1660,10 +1672,12 @@ h2 {
 }
 
 .why-map-label {
-  overflow-wrap: anywhere;
-  font-size: 0.74rem;
-  font-weight: 720;
-  line-height: 1.16;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.2;
 }
 
 .empty {
