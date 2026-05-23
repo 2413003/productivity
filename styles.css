@@ -707,7 +707,7 @@ summary:focus-visible {
 }
 
 .mindmap-node.is-root {
-  font-weight: 700;
+  font-weight: 650;
 }
 
 .mindmap-node.is-task {
@@ -737,14 +737,19 @@ body.is-mindmap-panning .mindmap-canvas {
 
 .mindmap-title {
   overflow-wrap: anywhere;
-  font-size: 1.03rem;
+  font-size: 1.08rem;
+  font-weight: 500;
   line-height: 1.25;
+}
+
+.mindmap-node.is-root .mindmap-title {
+  font-weight: 650;
 }
 
 .mindmap-meta {
   color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 0.76rem;
+  font-weight: 500;
   line-height: 1.2;
 }
 
@@ -925,15 +930,19 @@ body.is-mindmap-panning .mindmap-canvas {
 .objective-title {
   overflow-wrap: anywhere;
   color: var(--ink);
-  font-size: 1.08rem;
-  font-weight: 650;
+  font-size: 1.12rem;
+  font-weight: 500;
   line-height: 1.32;
+}
+
+.objective-item.is-root > .objective-node .objective-title {
+  font-weight: 650;
 }
 
 .objective-meta {
   color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 650;
+  font-size: 0.82rem;
+  font-weight: 500;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -1224,11 +1233,13 @@ button:disabled {
 }
 
 .day-timer {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
   min-height: 34px;
   margin-bottom: clamp(14px, 3vw, 22px);
+  cursor: help;
 }
 
 .day-timer output {
@@ -1236,6 +1247,34 @@ button:disabled {
   color: var(--muted);
   font-size: 0.84rem;
   font-weight: 750;
+}
+
+.day-timer:focus-visible {
+  outline: 0;
+}
+
+.day-timer-hint {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 7px);
+  z-index: 30;
+  min-width: max-content;
+  border-radius: 6px;
+  background: var(--ink);
+  color: white;
+  padding: 5px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.day-timer.is-explaining .day-timer-hint {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .meter {
@@ -1425,6 +1464,10 @@ h2 {
 
 .task-row:last-child {
   border-bottom: 1px solid var(--line);
+}
+
+.top-list .task-row:last-child {
+  border-bottom: 0;
 }
 
 .rank {

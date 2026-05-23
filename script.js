@@ -45,6 +45,7 @@
     objectiveStatus: document.getElementById("objectiveStatus"),
     taskInput: document.getElementById("taskInput"),
     draftCount: document.getElementById("draftCount"),
+    dayTimer: document.getElementById("dayTimer"),
     dayTimeLeft: document.getElementById("dayTimeLeft"),
     dayMeterFill: document.getElementById("dayMeterFill"),
     dayEndInput: document.getElementById("dayEndInput"),
@@ -191,6 +192,9 @@
     document.addEventListener("keydown", handlePageArrowKeydown);
 
     refs.taskInput.addEventListener("input", saveDraftInput);
+    refs.dayTimer?.addEventListener("click", showDayTimerHint);
+    refs.dayTimer?.addEventListener("focusin", showDayTimerHint);
+    refs.dayTimer?.addEventListener("focusout", hideDayTimerHintOnFocusOut);
     refs.dayEndInput?.addEventListener("change", saveDayEndTime);
     refs.dayEndInput?.addEventListener("input", saveDayEndTime);
     refs.objectiveRootToggle?.addEventListener("click", openRootObjectiveForm);
@@ -221,6 +225,8 @@
     window.addEventListener("pointercancel", cancelMindmapPointer);
     window.addEventListener("click", closeObjectiveChromeOutside, true);
     document.addEventListener("pointerdown", closeObjectiveChromeOutside, true);
+    document.addEventListener("pointerdown", hideDayTimerHintOutside, true);
+    document.addEventListener("keydown", hideDayTimerHintOnEscape);
     refs.choiceA.addEventListener("click", () => chooseCurrent(0));
     refs.choiceB.addEventListener("click", () => chooseCurrent(1));
     refs.skipBtn.addEventListener("click", skipCurrent);
@@ -1662,7 +1668,7 @@
       return;
     }
 
-    if (!shouldShowPageInPrimaryNav(nextView)) {
+    if (!canOpenPageView(nextView)) {
       activeView = tasklessFallbackView();
       render();
       return;
@@ -1739,7 +1745,7 @@
       activeView = "account";
     }
 
-    if (isAccountDataView(activeView) && !shouldShowPageInPrimaryNav(activeView)) {
+    if (isAccountDataView(activeView) && !canOpenPageView(activeView)) {
       activeView = tasklessFallbackView();
     }
 
@@ -1767,6 +1773,18 @@
   }
 
   function shouldShowPageInPrimaryNav(view) {
+    if (view === "choose") {
+      return false;
+    }
+
+    if (view === "focus") {
+      return activeTasks().length >= 1;
+    }
+
+    return true;
+  }
+
+  function canOpenPageView(view) {
     if (view === "choose") {
       return activeTasks().length >= 2;
     }
@@ -2134,6 +2152,7 @@
     const isCollapsed = hasBranch && objectiveIsCollapsed(node.id) && !isDrafting;
     const item = document.createElement("li");
     item.className = "objective-item";
+    item.classList.toggle("is-root", !node.parentId);
     item.classList.toggle("is-task-item", isLinkedTask);
     item.classList.toggle("is-selected", objectiveIsSelected(node.id));
     item.classList.toggle("is-collapsed", isCollapsed);
@@ -2386,6 +2405,22 @@
     }
 
     updateDraftCount();
+    renderDoneTasks();
+  }
+
+  function renderDoneTasks() {
+    if (!refs.doneBlock || !refs.doneList) {
+      return;
+    }
+
+    const doneTasks = [...state.tasks]
+      .filter((task) => task.done)
+      .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    refs.doneBlock.classList.toggle("is-hidden", !doneTasks.length);
+    refs.doneList.innerHTML = "";
+    doneTasks.forEach((task, index) => {
+      refs.doneList.appendChild(createTaskRow(task, index + 1, "restore"));
+    });
   }
 
   function renderChoose() {
@@ -2394,6 +2429,7 @@
     refs.choiceA.disabled = active.length < 2;
     refs.choiceB.disabled = active.length < 2;
     refs.undoBtn.disabled = !state.comparisons.length;
+    refs.undoBtn.classList.toggle("is-hidden", !state.comparisons.length);
     renderDayTimer();
 
     if (active.length < 2) {
@@ -2428,6 +2464,30 @@
     refs.dayMeterFill.style.transform = `scaleX(${timing.progress})`;
   }
 
+  function showDayTimerHint() {
+    refs.dayTimer?.classList.add("is-explaining");
+  }
+
+  function hideDayTimerHintOutside(event) {
+    if (!refs.dayTimer || refs.dayTimer.contains(event.target)) {
+      return;
+    }
+
+    refs.dayTimer.classList.remove("is-explaining");
+  }
+
+  function hideDayTimerHintOnFocusOut(event) {
+    if (!refs.dayTimer?.contains(event.relatedTarget)) {
+      refs.dayTimer?.classList.remove("is-explaining");
+    }
+  }
+
+  function hideDayTimerHintOnEscape(event) {
+    if (event.key === "Escape") {
+      refs.dayTimer?.classList.remove("is-explaining");
+    }
+  }
+
   function renderFocus() {
     const ranked = rankedTasks().filter((task) => !task.done);
     const topCount = clamp(state.topCount, 1, Math.max(1, ranked.length || state.topCount));
@@ -2456,17 +2516,6 @@
     ranked.forEach((task, index) => {
       refs.allList.appendChild(createTaskRow(task, index + 1, "done"));
     });
-
-    const doneTasks = [...state.tasks]
-      .filter((task) => task.done)
-      .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
-    if (refs.doneBlock && refs.doneList) {
-      refs.doneBlock.classList.toggle("is-hidden", !doneTasks.length);
-      refs.doneList.innerHTML = "";
-      doneTasks.forEach((task, index) => {
-        refs.doneList.appendChild(createTaskRow(task, index + 1, "restore"));
-      });
-    }
 
     refs.keepChoosing.setAttribute("aria-label", "Choose");
     refs.keepChoosing.dataset.tooltip = "Choose";

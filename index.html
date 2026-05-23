@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=objectives-text-bump">
+    <link rel="stylesheet" href="styles.css?v=top-bottom-divider">
   </head>
   <body>
     <div class="shell">
@@ -36,18 +36,11 @@
               <path d="m4 18 1.2 1.2L7.5 17" />
             </svg>
           </button>
-          <button type="button" data-view-button="choose" aria-label="Choose" data-tooltip="Choose">
-            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M5 7h14" />
-              <path d="m15 3 4 4-4 4" />
-              <path d="M19 17H5" />
-              <path d="m9 13-4 4 4 4" />
-            </svg>
-          </button>
           <button type="button" data-view-button="focus" aria-label="Top" data-tooltip="Top">
             <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M12 19V5" />
-              <path d="m6 11 6-6 6 6" />
+              <circle cx="12" cy="12" r="8" />
+              <path d="M11 9.4 13 8v8" />
+              <path d="M10 16h6" />
             </svg>
           </button>
           <button type="button" data-view-button="reputation" aria-label="Profile" data-tooltip="Profile">
@@ -143,18 +136,23 @@
               <output id="draftCount" aria-live="polite">0</output>
             </div>
             <textarea id="taskInput" spellcheck="true" placeholder="One task per line"></textarea>
+            <div class="done-block is-hidden" id="doneBlock">
+              <p class="list-label">Done</p>
+              <ul class="done-list" id="doneList"></ul>
+            </div>
           </div>
         </section>
 
         <section class="screen" data-screen="choose" aria-labelledby="choose-title">
           <div class="choice-wrap">
-            <div class="day-timer" aria-label="Day time remaining">
+            <div class="day-timer" id="dayTimer" aria-label="Day time remaining" aria-describedby="dayTimerHint" tabindex="0">
               <output id="dayTimeLeft" aria-live="polite">--</output>
               <span class="meter day-meter" aria-hidden="true"><span id="dayMeterFill"></span></span>
               <input id="dayEndInput" type="time" aria-label="Finish time">
+              <span class="day-timer-hint" id="dayTimerHint">Left until finish time.</span>
             </div>
 
-            <p class="kicker center" id="choose-title">Choose first</p>
+            <p class="kicker center" id="choose-title">Choose highest priority</p>
 
             <div class="choice-stack" id="choiceStack" aria-live="polite">
               <button class="choice-card" type="button" id="choiceA">
@@ -221,10 +219,6 @@
                 <button type="button" id="clearAll">Clear all</button>
               </div>
               <ul class="all-list" id="allList"></ul>
-              <div class="done-block is-hidden" id="doneBlock">
-                <p class="list-label">Done</p>
-                <ul class="done-list" id="doneList"></ul>
-              </div>
             </details>
           </div>
         </section>
@@ -426,6 +420,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=objectives-text-bump"></script>
+    <script src="script.js?v=top-bottom-divider"></script>
   </body>
 </html>
