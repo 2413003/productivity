@@ -9,14 +9,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=objective-compact-mindmap">
+    <link rel="stylesheet" href="styles.css?v=top-right-nav">
   </head>
   <body>
     <div class="shell">
       <header class="topbar">
-        <button class="wordmark" type="button" data-view-button="focus" aria-label="Open top tasks">
-          Do
-        </button>
         <nav class="nav" aria-label="Primary">
           <button type="button" data-view-button="map" aria-label="Map" data-tooltip="Map">
             <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -91,6 +88,41 @@
                   <circle cx="17" cy="20" r="2" />
                 </svg>
               </button>
+              <button class="map-bottleneck-trigger icon-add" type="button" id="objectiveBottleneckToggle" aria-label="Choose bottleneck" data-tooltip="Bottleneck">
+                <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14" />
+                  <path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4" />
+                  <path d="M12 3v3" />
+                  <path d="M12 18v3" />
+                  <path d="M3 12h3" />
+                  <path d="M18 12h3" />
+                </svg>
+              </button>
+            </div>
+            <div class="objective-selection-bar is-hidden" id="objectiveSelectionBar" role="toolbar" aria-label="Selected steps">
+              <output id="objectiveSelectionCount" aria-live="polite">0</output>
+              <button class="icon-control" type="button" id="duplicateObjectivesBtn" aria-label="Duplicate selected" data-tooltip="Duplicate">
+                <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <rect x="8" y="8" width="11" height="11" rx="2" />
+                  <path d="M5 15V7a2 2 0 0 1 2-2h8" />
+                </svg>
+              </button>
+              <button class="icon-control" type="button" id="clearObjectiveSelectionBtn" aria-label="Clear selection" data-tooltip="Clear">
+                <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M6 6l12 12" />
+                  <path d="M18 6 6 18" />
+                </svg>
+              </button>
+            </div>
+            <div class="objective-bottleneck-bar is-hidden" id="objectiveBottleneckBar">
+              <span id="objectiveBottleneckLabel">Choose bottleneck</span>
+              <output id="objectiveBottleneckCount" aria-live="polite">0</output>
+              <button class="icon-control" type="button" id="cancelBottleneckBtn" aria-label="Cancel bottleneck picker" data-tooltip="Cancel">
+                <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M6 6l12 12" />
+                  <path d="M18 6 6 18" />
+                </svg>
+              </button>
             </div>
             <form class="map-form is-hidden" id="objectiveRootForm">
               <input id="objectiveRootInput" type="text" autocomplete="off" placeholder="New objective">
@@ -149,8 +181,7 @@
           <div class="focus">
             <div class="focus-head">
               <div>
-                <p class="kicker">Next</p>
-                <h1 id="focus-title">Top 3</h1>
+                <h1 id="focus-title">Biggest Bottleneck</h1>
               </div>
               <div class="stepper" aria-label="Top count">
                 <button type="button" id="lessTop" aria-label="Show fewer">-</button>
@@ -210,9 +241,7 @@
             <p class="profile-handle" id="profileHandle">@do</p>
             <p class="profile-bio" id="profileBio"></p>
 
-            <div class="metric-strip" aria-label="Profile stats">
-              <span><strong id="repScore">0</strong><small>Score</small></span>
-              <span><strong id="doneMetric">0</strong><small>Done</small></span>
+            <div class="metric-strip profile-metric-strip" aria-label="Profile stats">
               <span><strong id="supportMetric">0</strong><small>Friends</small></span>
             </div>
 
@@ -284,8 +313,7 @@
             </div>
             <p class="profile-handle" id="publicHandle">@do</p>
             <p class="profile-bio" id="publicBio"></p>
-            <div class="metric-strip" aria-label="Public profile stats">
-              <span><strong id="publicScore">0</strong><small>Score</small></span>
+            <div class="metric-strip public-metric-strip" aria-label="Public profile stats">
               <span><strong id="publicProof">0</strong><small>Proof</small></span>
               <span><strong id="publicSupport">0</strong><small>Friends</small></span>
             </div>
@@ -294,11 +322,10 @@
           </div>
         </section>
 
-        <section class="screen" data-screen="account" aria-labelledby="account-title">
+        <section class="screen" data-screen="account" aria-labelledby="accountName">
           <div class="account">
             <div class="rep-head">
               <div>
-                <p class="kicker" id="account-title">Account</p>
                 <h1 id="accountName">Sign in</h1>
               </div>
               <output id="syncStatus" aria-live="polite"></output>
@@ -398,6 +425,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=objective-compact-mindmap"></script>
+    <script src="script.js?v=top-right-nav"></script>
   </body>
 </html>

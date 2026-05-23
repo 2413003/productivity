@@ -28,9 +28,18 @@
     objectiveRootForm: document.getElementById("objectiveRootForm"),
     objectiveRootInput: document.getElementById("objectiveRootInput"),
     objectiveViewToggle: document.getElementById("objectiveViewToggle"),
+    objectiveBottleneckToggle: document.getElementById("objectiveBottleneckToggle"),
+    objectiveBottleneckBar: document.getElementById("objectiveBottleneckBar"),
+    objectiveBottleneckLabel: document.getElementById("objectiveBottleneckLabel"),
+    objectiveBottleneckCount: document.getElementById("objectiveBottleneckCount"),
+    cancelBottleneckBtn: document.getElementById("cancelBottleneckBtn"),
     objectiveCanvas: document.getElementById("objectiveCanvas"),
     objectiveTree: document.getElementById("objectiveTree"),
     objectiveMindmap: document.getElementById("objectiveMindmap"),
+    objectiveSelectionBar: document.getElementById("objectiveSelectionBar"),
+    objectiveSelectionCount: document.getElementById("objectiveSelectionCount"),
+    duplicateObjectivesBtn: document.getElementById("duplicateObjectivesBtn"),
+    clearObjectiveSelectionBtn: document.getElementById("clearObjectiveSelectionBtn"),
     objectiveCount: document.getElementById("objectiveCount"),
     objectiveStatus: document.getElementById("objectiveStatus"),
     taskInput: document.getElementById("taskInput"),
@@ -132,8 +141,11 @@
   let cloudBusy = false;
   let cloudSaveNeeded = false;
   let cloudLoadedUserId = null;
+  let authRefreshTimer = null;
+  let authRefreshPromise = null;
   let activeView = initialView();
   let lastSyncedInput = "";
+  let accountMode = "sign-in";
   let recoveryMode = hasRecoveryLink();
   let proofTaskId = null;
   let proofCancelSnapshot = null;
@@ -146,6 +158,8 @@
   let lastSignalUrl = "";
   let objectiveDraftParentId = null;
   let selectedObjectiveId = null;
+  let selectedObjectiveIds = new Set();
+  let objectiveBottleneckMode = false;
   let objectiveRootOpen = false;
   let objectiveMenuId = null;
   let objectiveRenameId = null;
@@ -176,6 +190,11 @@
     refs.startBtn.addEventListener("click", () => applyTasks("choose"));
     refs.objectiveRootToggle?.addEventListener("click", openRootObjectiveForm);
     refs.objectiveViewToggle?.addEventListener("click", toggleObjectiveView);
+    refs.objectiveBottleneckToggle?.addEventListener("click", toggleObjectiveBottleneckMode);
+    refs.cancelBottleneckBtn?.addEventListener("click", () => {
+      objectiveBottleneckMode = false;
+      renderMap();
+    });
     refs.objectiveRootForm?.addEventListener("submit", addRootObjective);
     refs.objectiveRootForm?.addEventListener("keydown", handleObjectiveKeydown);
     refs.objectiveTree?.addEventListener("click", suppressObjectiveDragClick, true);
@@ -183,6 +202,11 @@
     refs.objectiveTree?.addEventListener("submit", submitObjectiveChild);
     refs.objectiveTree?.addEventListener("keydown", handleObjectiveKeydown);
     refs.objectiveTree?.addEventListener("pointerdown", handleObjectivePointerDown);
+    refs.duplicateObjectivesBtn?.addEventListener("click", duplicateSelectedObjectives);
+    refs.clearObjectiveSelectionBtn?.addEventListener("click", () => {
+      clearObjectiveSelection();
+      renderMap();
+    });
     refs.objectiveMindmap?.addEventListener("pointerdown", handleMindmapPointerDown);
     window.addEventListener("pointermove", handleObjectivePointerMove, { passive: false });
     window.addEventListener("pointermove", handleMindmapPointerMove, { passive: false });
@@ -238,16 +262,25 @@
     refs.recoveryForm.addEventListener("submit", saveNewPassword);
     refs.signOutBtn.addEventListener("click", signOut);
 
-    window.addEventListener("storage", () => {
-      state = loadState();
-      render();
+    window.addEventListener("storage", (event) => {
+      if (isAuthStorageEvent(event)) {
+        queueAuthRefresh();
+      }
+
+      if (isAppStateStorageEvent(event)) {
+        state = loadState();
+        render();
+      }
     });
+    window.addEventListener("focus", () => queueAuthRefresh());
     window.addEventListener("pagehide", () => {
       flushCloudSaveNow();
     });
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") {
         flushCloudSaveNow();
+      } else {
+        queueAuthRefresh();
       }
     });
     window.addEventListener("hashchange", () => {
@@ -290,6 +323,7 @@
       ...base,
       ...saved,
       objectiveView: saved.objectiveView === "mindmap" ? "mindmap" : "list",
+      bottleneckTaskId: typeof saved.bottleneckTaskId === "string" ? saved.bottleneckTaskId : "",
       draftText: typeof saved.draftText === "string" ? saved.draftText : "",
       topCount: clamp(Number(saved.topCount) || 3, 1, 99),
       totalTaps: Number(saved.totalTaps) || 0,
@@ -391,6 +425,7 @@
       objectives: [],
       collapsedObjectives: [],
       objectiveView: "list",
+      bottleneckTaskId: "",
       draftText: "",
       topCount: 1,
       totalTaps: 0,
@@ -514,6 +549,34 @@
     return backendConfigured() && (!session || recoveryMode);
   }
 
+  function isAuthStorageEvent(event) {
+    if (!event || event.storageArea !== localStorage) {
+      return false;
+    }
+
+    if (!event.key) {
+      return true;
+    }
+
+    return (
+      event.key === "supabase.auth.token" ||
+      (event.key.startsWith("sb-") && event.key.includes("auth-token"))
+    );
+  }
+
+  function isAppStateStorageEvent(event) {
+    if (!event || event.storageArea !== localStorage) {
+      return false;
+    }
+
+    return (
+      !event.key ||
+      event.key === STORE_KEY ||
+      event.key === LEGACY_STORE_KEY ||
+      event.key.startsWith(ACCOUNT_STORE_PREFIX)
+    );
+  }
+
   function isAccountDataView(view) {
     return ["map", "input", "choose", "focus", "reputation"].includes(view);
   }
@@ -578,8 +641,8 @@
 
       session = data.session;
       supabaseClient.auth.onAuthStateChange(async (event, nextSession) => {
-        session = nextSession;
         if (event === "PASSWORD_RECOVERY") {
+          session = nextSession;
           recoveryMode = true;
           activeView = "account";
           setSyncStatus("Reset password");
@@ -587,19 +650,7 @@
           return;
         }
 
-        if (session) {
-          await syncNow();
-          if (!recoveryMode && activeView === "account") {
-            activeView = state.tasks.length ? "focus" : "input";
-          }
-          render();
-        } else {
-          recoveryMode = false;
-          clearLocalAccountData();
-          activeView = "account";
-          setSyncStatus("Signed out");
-          render();
-        }
+        await applyAuthSession(nextSession);
       });
 
       if (session) {
@@ -636,8 +687,82 @@
     }
   }
 
+  function queueAuthRefresh() {
+    if (!supabaseClient || recoveryMode) {
+      return;
+    }
+
+    window.clearTimeout(authRefreshTimer);
+    authRefreshTimer = window.setTimeout(() => {
+      refreshAuthSessionFromStorage();
+    }, 60);
+  }
+
+  async function refreshAuthSessionFromStorage() {
+    if (!supabaseClient || recoveryMode) {
+      return;
+    }
+
+    if (authRefreshPromise) {
+      return authRefreshPromise;
+    }
+
+    authRefreshPromise = (async () => {
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error) {
+        console.warn("Couldn't refresh auth session", error);
+        return;
+      }
+
+      await applyAuthSession(data.session);
+    })().finally(() => {
+      authRefreshPromise = null;
+    });
+
+    return authRefreshPromise;
+  }
+
+  async function applyAuthSession(nextSession) {
+    const previousFingerprint = authSessionFingerprint(session);
+    const nextFingerprint = authSessionFingerprint(nextSession);
+    if (previousFingerprint === nextFingerprint) {
+      return;
+    }
+
+    const hadSession = Boolean(session);
+    session = nextSession;
+
+    if (session) {
+      recoveryMode = false;
+      await syncNow();
+      await processPendingSignal();
+      if (pendingSupportDialog) {
+        window.setTimeout(() => openSupportDialog(), 120);
+      }
+      if (activeView === "account") {
+        activeView = state.tasks.length ? "focus" : "input";
+      }
+      render();
+      return;
+    }
+
+    if (hadSession) {
+      recoveryMode = false;
+      clearLocalAccountData();
+      activeView = "account";
+      setSyncStatus("Signed out");
+      render();
+    }
+  }
+
+  function authSessionFingerprint(value) {
+    return value ? `${value.user?.id || ""}:${value.access_token || ""}` : "";
+  }
+
   async function signIn(event) {
     event.preventDefault();
+    accountMode = "sign-in";
+    renderAccount();
     if (!supabaseClient) {
       setSyncStatus("Try again later");
       return;
@@ -670,6 +795,9 @@
   }
 
   async function signUp() {
+    accountMode = "create";
+    setSyncStatus("");
+    renderAccount();
     if (!supabaseClient) {
       setSyncStatus("Try again later");
       return;
@@ -678,7 +806,11 @@
     const email = refs.authEmail.value.trim();
     const password = refs.authPassword.value;
     if (!email || !password) {
-      setSyncStatus("Email + password");
+      if (!email) {
+        refs.authEmail.focus();
+      } else {
+        refs.authPassword.focus();
+      }
       return;
     }
 
@@ -1544,12 +1676,24 @@
     const roots = objectiveChildren("");
     const linkedTasks = state.objectives.filter((node) => node.taskId && findTask(node.taskId)).length;
     const view = objectiveView();
+    const bottleneckCandidates = objectiveBottleneckCandidates();
+
+    if (view !== "list") {
+      objectiveBottleneckMode = false;
+    }
+    if (state.bottleneckTaskId && !findTask(state.bottleneckTaskId)) {
+      state.bottleneckTaskId = "";
+    }
 
     refs.objectiveMap?.classList.toggle("is-mindmap-view", view === "mindmap");
+    refs.objectiveMap?.classList.toggle("has-objectives", state.objectives.length > 0);
     refs.objectiveRootToggle?.classList.toggle("is-hidden", objectiveRootOpen);
     refs.objectiveViewToggle?.classList.toggle("is-hidden", objectiveRootOpen);
+    refs.objectiveBottleneckToggle?.classList.toggle("is-hidden", objectiveRootOpen || view !== "list");
+    refs.objectiveBottleneckToggle?.setAttribute("aria-pressed", String(objectiveBottleneckMode));
     refs.objectiveRootForm?.classList.toggle("is-hidden", !objectiveRootOpen);
     refs.objectiveTree?.classList.toggle("is-hidden", view !== "list");
+    refs.objectiveTree?.classList.toggle("is-bottleneck-mode", objectiveBottleneckMode);
     refs.objectiveMindmap?.classList.toggle("is-hidden", view !== "mindmap");
     refs.objectiveCanvas?.classList.toggle("is-mindmap", view === "mindmap");
     refs.objectiveCount.textContent = `${state.objectives.length} item${state.objectives.length === 1 ? "" : "s"}`;
@@ -1559,8 +1703,10 @@
     if (refs.objectiveMindmap) {
       refs.objectiveMindmap.innerHTML = "";
     }
+    renderObjectiveBottleneckBar(bottleneckCandidates.length);
 
     if (!roots.length) {
+      renderObjectiveSelectionBar();
       if (view === "mindmap") {
         renderMindmap(roots);
       } else {
@@ -1575,6 +1721,7 @@
     if (selectedObjectiveId && !findObjective(selectedObjectiveId)) {
       selectedObjectiveId = null;
     }
+    syncObjectiveSelection();
     if (objectiveMenuId && !findObjective(objectiveMenuId)) {
       objectiveMenuId = null;
     }
@@ -1588,6 +1735,7 @@
     roots.forEach((node) => {
       refs.objectiveTree.appendChild(createObjectiveItem(node, 0));
     });
+    renderObjectiveSelectionBar();
 
     if (view === "mindmap") {
       renderMindmap(roots);
@@ -1601,6 +1749,7 @@
 
   function toggleObjectiveView() {
     state.objectiveView = objectiveView() === "mindmap" ? "list" : "mindmap";
+    objectiveBottleneckMode = false;
     objectiveMenuId = null;
     objectiveRenameId = null;
     objectiveDraftParentId = null;
@@ -1619,6 +1768,31 @@
     refs.objectiveViewToggle.dataset.tooltip = isMindmap ? "List" : "Mind map";
     refs.objectiveViewToggle.setAttribute("aria-pressed", String(isMindmap));
     refs.objectiveViewToggle.replaceChildren(createControlIcon(isMindmap ? "list" : "mindmap"));
+  }
+
+  function renderObjectiveSelectionBar() {
+    const ids = objectiveSelectedIds();
+    const show = activeView === "map" && objectiveView() === "list" && ids.length > 1 && !objectiveDrag;
+    refs.objectiveSelectionBar?.classList.toggle("is-hidden", !show);
+    if (refs.objectiveSelectionCount) {
+      refs.objectiveSelectionCount.textContent = String(ids.length);
+      refs.objectiveSelectionCount.setAttribute("aria-label", `${ids.length} selected`);
+    }
+    if (refs.duplicateObjectivesBtn) {
+      refs.duplicateObjectivesBtn.disabled = ids.length < 1;
+    }
+  }
+
+  function renderObjectiveBottleneckBar(count) {
+    const show = activeView === "map" && objectiveView() === "list" && objectiveBottleneckMode;
+    refs.objectiveBottleneckBar?.classList.toggle("is-hidden", !show);
+    if (refs.objectiveBottleneckLabel) {
+      refs.objectiveBottleneckLabel.textContent = count ? "Choose bottleneck" : "No tasks yet";
+    }
+    if (refs.objectiveBottleneckCount) {
+      refs.objectiveBottleneckCount.textContent = count ? String(count) : "0";
+      refs.objectiveBottleneckCount.setAttribute("aria-label", count ? `${count} task choices` : "No task choices");
+    }
   }
 
   function renderMindmap(roots) {
@@ -1659,7 +1833,7 @@
       button.className = "mindmap-node";
       button.classList.toggle("is-root", !node.parentId);
       button.classList.toggle("is-task", Boolean(node.taskId && findTask(node.taskId)));
-      button.classList.toggle("is-selected", selectedObjectiveId === node.id);
+      button.classList.toggle("is-selected", objectiveIsSelected(node.id));
       button.classList.toggle("is-masked", objectiveMaskedInPath(node.id));
       button.type = "button";
       button.dataset.id = node.id;
@@ -1839,6 +2013,9 @@
 
   function createObjectiveItem(node, depth) {
     const isLinkedTask = Boolean(node.taskId && findTask(node.taskId));
+    const task = objectiveTaskForNode(node);
+    const isBottleneckCandidate = objectiveBottleneckMode && Boolean(task);
+    const isChosenBottleneck = Boolean(task && state.bottleneckTaskId === task.id && !task.done);
     const children = objectiveChildren(node.id);
     const isDrafting = objectiveDraftParentId === node.id;
     const hasBranch = children.length || isDrafting;
@@ -1848,16 +2025,20 @@
     const item = document.createElement("li");
     item.className = "objective-item";
     item.classList.toggle("is-task-item", isLinkedTask);
-    item.classList.toggle("is-selected", selectedObjectiveId === node.id);
+    item.classList.toggle("is-selected", objectiveIsSelected(node.id));
     item.classList.toggle("is-collapsed", isCollapsed);
     item.classList.toggle("is-opening", isOpening);
     item.classList.toggle("is-collapsing", isClosing);
     item.classList.toggle("is-menu-open", objectiveMenuId === node.id);
     item.classList.toggle("is-renaming", objectiveRenameId === node.id);
     item.classList.toggle("is-masked", Boolean(node.masked));
-    item.classList.toggle("is-dragging", objectiveDrag?.id === node.id);
-    item.classList.toggle("is-drop-before", objectiveDrag?.dropTargetId === node.id && !objectiveDrag.dropAfter);
-    item.classList.toggle("is-drop-after", objectiveDrag?.dropTargetId === node.id && Boolean(objectiveDrag.dropAfter));
+    item.classList.toggle("is-bottleneck-candidate", isBottleneckCandidate);
+    item.classList.toggle("is-bottleneck-chosen", isChosenBottleneck);
+    const objectiveDropMode = objectiveDrag?.dropTargetId === node.id ? objectiveDrag.dropMode : "";
+    item.classList.toggle("is-dragging", objectiveDragIncludes(node.id));
+    item.classList.toggle("is-drop-before", objectiveDropMode === "before");
+    item.classList.toggle("is-drop-after", objectiveDropMode === "after");
+    item.classList.toggle("is-drop-inside", objectiveDropMode === "inside");
     item.classList.toggle("has-branch", Boolean(children.length));
     item.dataset.objectiveId = node.id;
     item.style.animationDelay = `${Math.min(depth, 7) * 24}ms`;
@@ -1886,9 +2067,10 @@
     const pick = document.createElement("button");
     pick.className = `objective-pick${isLinkedTask ? " is-task" : ""}`;
     pick.type = "button";
-    pick.dataset.action = "select";
+    pick.dataset.action = isBottleneckCandidate ? "choose-bottleneck" : "select";
     pick.dataset.id = node.id;
-    pick.setAttribute("aria-current", selectedObjectiveId === node.id ? "true" : "false");
+    pick.setAttribute("aria-current", objectiveIsSelected(node.id) ? "true" : "false");
+    pick.setAttribute("aria-pressed", objectiveIsSelected(node.id) ? "true" : "false");
 
     const main = document.createElement("span");
     main.className = "objective-main";
@@ -2123,7 +2305,7 @@
     const topCount = clamp(state.topCount, 1, Math.max(1, ranked.length || state.topCount));
     state.topCount = topCount;
 
-    refs.focusTitle.textContent = `Top ${topCount}`;
+    refs.focusTitle.textContent = "Biggest Bottleneck";
     refs.topCount.textContent = String(topCount);
     refs.lessTop.disabled = topCount <= 1;
     refs.moreTop.disabled = ranked.length > 0 && topCount >= ranked.length;
@@ -2166,6 +2348,10 @@
         return "Done";
       }
 
+      if (state.bottleneckTaskId === task.id) {
+        return "Bottleneck";
+      }
+
       const rank = taskRank(task.id);
       return rank ? `Priority #${rank}` : "Task";
     }
@@ -2177,8 +2363,131 @@
     return "";
   }
 
+  function objectiveTaskForNode(node) {
+    const task = node?.taskId ? findTask(node.taskId) : null;
+    return task && !task.done ? task : null;
+  }
+
+  function objectiveBottleneckCandidates() {
+    return state.objectives.filter((node) => objectiveTaskForNode(node));
+  }
+
+  function toggleObjectiveBottleneckMode() {
+    if (objectiveView() !== "list") {
+      state.objectiveView = "list";
+    }
+
+    objectiveBottleneckMode = !objectiveBottleneckMode;
+    objectiveMenuId = null;
+    objectiveRenameId = null;
+    objectiveDraftParentId = null;
+    clearObjectiveSelection();
+    renderMap();
+  }
+
+  function chooseObjectiveBottleneck(objectiveId) {
+    const node = findObjective(objectiveId);
+    const task = objectiveTaskForNode(node);
+    if (!node || !task) {
+      return;
+    }
+
+    const active = activeTasks();
+    const maxScore = Math.max(1000, ...active.map((item) => Number(item.score) || 1000));
+    task.score = Math.max(task.score + 100, maxScore + 100);
+    task.done = false;
+    task.doneAt = null;
+    state.bottleneckTaskId = task.id;
+    state.currentPair = null;
+    selectedObjectiveId = node.id;
+    selectedObjectiveIds = new Set([node.id]);
+    objectiveBottleneckMode = false;
+    objectiveMenuId = null;
+    objectiveRenameId = null;
+    objectiveDraftParentId = null;
+    syncDraftFromTasks();
+    saveState({ immediate: true });
+    render();
+  }
+
+  function objectiveIsSelected(id) {
+    return selectedObjectiveIds.has(id) || selectedObjectiveId === id;
+  }
+
+  function objectiveSelectedIds() {
+    syncObjectiveSelection();
+    return Array.from(selectedObjectiveIds);
+  }
+
+  function syncObjectiveSelection() {
+    selectedObjectiveIds = new Set(Array.from(selectedObjectiveIds).filter((id) => findObjective(id)));
+    if (selectedObjectiveId && !findObjective(selectedObjectiveId)) {
+      selectedObjectiveId = null;
+    }
+    if (selectedObjectiveId) {
+      selectedObjectiveIds.add(selectedObjectiveId);
+    }
+    if (!selectedObjectiveId && selectedObjectiveIds.size) {
+      selectedObjectiveId = Array.from(selectedObjectiveIds).at(-1);
+    }
+  }
+
+  function setObjectiveSelection(ids) {
+    const validIds = ids.filter((id) => findObjective(id));
+    selectedObjectiveIds = new Set(validIds);
+    selectedObjectiveId = validIds.at(-1) || null;
+  }
+
+  function clearObjectiveSelection() {
+    selectedObjectiveIds.clear();
+    selectedObjectiveId = null;
+  }
+
+  function toggleObjectiveSelection(id) {
+    if (!findObjective(id)) {
+      return;
+    }
+
+    if (selectedObjectiveIds.has(id)) {
+      selectedObjectiveIds.delete(id);
+      if (selectedObjectiveId === id) {
+        selectedObjectiveId = Array.from(selectedObjectiveIds).at(-1) || null;
+      }
+    } else {
+      selectedObjectiveIds.add(id);
+      selectedObjectiveId = id;
+    }
+  }
+
+  function selectObjectiveRange(toId) {
+    const fromId = selectedObjectiveId || Array.from(selectedObjectiveIds).at(-1);
+    const visibleIds = visibleObjectiveIds();
+    const fromIndex = visibleIds.indexOf(fromId);
+    const toIndex = visibleIds.indexOf(toId);
+    if (fromIndex < 0 || toIndex < 0) {
+      toggleObjectiveSelection(toId);
+      return;
+    }
+
+    const [start, end] = fromIndex < toIndex ? [fromIndex, toIndex] : [toIndex, fromIndex];
+    visibleIds.slice(start, end + 1).forEach((id) => selectedObjectiveIds.add(id));
+    selectedObjectiveId = toId;
+  }
+
+  function visibleObjectiveIds(parentId = "") {
+    return objectiveChildren(parentId).flatMap((node) => {
+      const ids = [node.id];
+      const hasChildren = objectiveChildren(node.id).length > 0;
+      if (hasChildren && !objectiveIsCollapsed(node.id)) {
+        ids.push(...visibleObjectiveIds(node.id));
+      }
+      return ids;
+    });
+  }
+
   function openRootObjectiveForm() {
     objectiveRootOpen = true;
+    objectiveBottleneckMode = false;
     objectiveMenuId = null;
     objectiveRenameId = null;
     renderMap();
@@ -2263,6 +2572,12 @@
       objectiveRootOpen = false;
       refs.objectiveRootInput.value = "";
       renderMap();
+      return;
+    }
+
+    if (objectiveSelectedIds().length) {
+      clearObjectiveSelection();
+      renderMap();
     }
   }
 
@@ -2273,9 +2588,24 @@
     }
 
     const action = button.dataset.action;
+    if (action === "choose-bottleneck") {
+      chooseObjectiveBottleneck(button.dataset.id);
+      return;
+    }
+
     if (action === "select") {
+      if (objectiveBottleneckMode) {
+        return;
+      }
       const id = button.dataset.id || null;
-      selectedObjectiveId = selectedObjectiveId === id ? null : id;
+      if (event.shiftKey) {
+        selectObjectiveRange(id);
+      } else if (event.metaKey || event.ctrlKey) {
+        toggleObjectiveSelection(id);
+      } else {
+        const selectedIds = objectiveSelectedIds();
+        setObjectiveSelection(selectedIds.length === 1 && selectedIds[0] === id ? [] : [id]);
+      }
       objectiveMenuId = null;
       render();
       return;
@@ -2305,14 +2635,14 @@
     }
 
     if (action === "toggle-more") {
-      selectedObjectiveId = node.id;
+      setObjectiveSelection([node.id]);
       objectiveMenuId = objectiveMenuId === node.id ? null : node.id;
       render();
       return;
     }
 
     if (action === "rename-objective") {
-      selectedObjectiveId = node.id;
+      setObjectiveSelection([node.id]);
       objectiveMenuId = null;
       objectiveDraftParentId = null;
       objectiveRenameId = node.id;
@@ -2334,7 +2664,7 @@
     }
 
     if (action === "add-child") {
-      selectedObjectiveId = node.id;
+      setObjectiveSelection([node.id]);
       objectiveDraftParentId = node.id;
       objectiveMenuId = null;
       objectiveRenameId = null;
@@ -2373,7 +2703,7 @@
       masked: false,
       createdAt: Date.now() + Math.random()
     });
-    selectedObjectiveId = id;
+    setObjectiveSelection([id]);
     objectiveDraftParentId = null;
     if (parentId) {
       expandObjective(parentId);
@@ -2472,25 +2802,29 @@
     updateObjectiveDragPreview(event.clientX, event.clientY);
 
     const target = objectiveDragTarget(event.clientX, event.clientY);
-    if (!target || target.parentId !== objectiveDrag.parentId) {
+    const dropMode = target ? objectiveDropModeForTarget(target, event.clientY) : "";
+    if (!target || !dropMode) {
       if (objectiveDrag.dropTargetId) {
         objectiveDrag.dropTargetId = null;
-        objectiveDrag.dropAfter = false;
+        objectiveDrag.dropMode = "";
         renderMap();
       }
       return;
     }
 
-    if (target.id === objectiveDrag.id) {
-      return;
+    const dropChanged = objectiveDrag.dropTargetId !== target.id || objectiveDrag.dropMode !== dropMode;
+    objectiveDrag.dropTargetId = target.id;
+    objectiveDrag.dropMode = dropMode;
+
+    const moved = dropMode === "inside"
+      ? moveObjectivesInside(objectiveDrag.ids, target.id)
+      : moveObjectivesNear(objectiveDrag.ids, target.id, dropMode === "after");
+
+    if (moved) {
+      objectiveDrag.parentId = findObjective(objectiveDrag.id)?.parentId || "";
     }
 
-    const after = event.clientY > target.midY;
-    const dropChanged = objectiveDrag.dropTargetId !== target.id || objectiveDrag.dropAfter !== after;
-    objectiveDrag.dropTargetId = target.id;
-    objectiveDrag.dropAfter = after;
-
-    if (moveObjectiveNear(objectiveDrag.id, target.id, after) || dropChanged) {
+    if (moved || dropChanged) {
       renderMap();
     }
   }
@@ -2501,22 +2835,29 @@
       return;
     }
 
+    if (!objectiveIsSelected(id)) {
+      setObjectiveSelection([id]);
+    }
+    const dragIds = objectiveTopLevelIds(objectiveSelectedIds().includes(id) ? objectiveSelectedIds() : [id]);
+    setObjectiveSelection(dragIds);
+
     const sourceRow = objectiveItemElement(id)?.querySelector(":scope > .objective-node");
     const sourceBox = sourceRow?.getBoundingClientRect();
-    const preview = createObjectiveDragPreview(node, sourceBox?.width || 280);
+    const preview = createObjectiveDragPreview(node, sourceBox?.width || 280, dragIds.length);
 
     objectiveDrag = {
       id,
+      ids: dragIds,
       parentId: node.parentId || "",
       pointerId,
       offsetX: sourceBox ? objectivePress.startX - sourceBox.left : 18,
       offsetY: sourceBox ? objectivePress.startY - sourceBox.top : 18,
       dropTargetId: null,
-      dropAfter: false,
+      dropMode: "",
       preview
     };
     objectiveSuppressClick = true;
-    selectedObjectiveId = id;
+    selectedObjectiveId = dragIds.includes(id) ? id : dragIds.at(-1);
     objectiveMenuId = null;
     objectiveRenameId = null;
     objectiveDraftParentId = null;
@@ -2576,12 +2917,32 @@
   }
 
   function objectiveDragTarget(x, y) {
+    const seen = new Set();
     const item = document
       .elementsFromPoint(x, y)
       .map((element) => element.closest?.(".objective-item"))
-      .find(Boolean);
+      .find((candidate) => {
+        const id = candidate?.dataset.objectiveId;
+        if (!id || seen.has(id) || objectiveDragIncludesBranch(id)) {
+          return false;
+        }
+        seen.add(id);
+        return true;
+      });
 
     return item ? objectiveDragTargetFromItem(item) : null;
+  }
+
+  function objectiveDragIncludes(id) {
+    return Boolean(objectiveDrag?.ids?.includes(id) || objectiveDrag?.id === id);
+  }
+
+  function objectiveDragIncludesBranch(id) {
+    if (!objectiveDrag) {
+      return false;
+    }
+
+    return objectiveDrag.ids.some((dragId) => id === dragId || objectiveIsDescendant(id, dragId));
   }
 
   function objectiveItemElement(id) {
@@ -2590,7 +2951,7 @@
     );
   }
 
-  function createObjectiveDragPreview(node, width) {
+  function createObjectiveDragPreview(node, width, count = 1) {
     const preview = document.createElement("div");
     preview.className = "objective-drag-preview";
     preview.style.width = `${Math.min(Math.max(width, 220), 560)}px`;
@@ -2600,7 +2961,7 @@
     title.textContent = node.text;
     preview.appendChild(title);
 
-    const metaText = objectiveMeta(node);
+    const metaText = count > 1 ? `${count} selected` : objectiveMeta(node);
     if (metaText) {
       const meta = document.createElement("span");
       meta.className = "objective-meta";
@@ -2725,7 +3086,11 @@
 
     const wasDragging = mindmapDrag.active;
     const id = mindmapDrag.id;
-    selectedObjectiveId = !wasDragging && selectedObjectiveId === id ? null : id;
+    if (!wasDragging && objectiveIsSelected(id) && objectiveSelectedIds().length === 1) {
+      clearObjectiveSelection();
+    } else {
+      setObjectiveSelection([id]);
+    }
     document.body.classList.remove("is-mindmap-dragging");
     mindmapDrag = null;
 
@@ -2763,43 +3128,269 @@
     return {
       id: node.id,
       parentId: node.parentId || "",
+      top: box.top,
+      bottom: box.bottom,
+      height: box.height,
       midY: box.top + box.height / 2
     };
   }
 
-  function moveObjectiveNear(id, targetId, after) {
-    const node = findObjective(id);
+  function objectiveDropModeForTarget(target, y) {
+    if (!objectiveDrag || !target || target.id === objectiveDrag.id) {
+      return "";
+    }
+
+    const upperEdge = target.top + target.height * 0.28;
+    const lowerEdge = target.bottom - target.height * 0.28;
+    if (objectiveCanMoveGroupInside(objectiveDrag.ids, target.id) && y >= upperEdge && y <= lowerEdge) {
+      return "inside";
+    }
+
+    if (!objectiveCanMoveGroupToParent(objectiveDrag.ids, target.parentId || "")) {
+      return "";
+    }
+
+    return y > target.midY ? "after" : "before";
+  }
+
+  function moveObjectivesNear(ids, targetId, after) {
+    const movingIds = objectiveTopLevelIds(ids);
+    const movingNodes = movingIds.map((id) => findObjective(id)).filter(Boolean);
     const target = findObjective(targetId);
-    if (!node || !target || (node.parentId || "") !== (target.parentId || "")) {
+    if (!movingNodes.length || !target) {
       return false;
     }
 
-    const siblings = objectiveChildren(node.parentId || "");
-    const fromIndex = siblings.findIndex((item) => item.id === id);
-    const withoutDragged = siblings.filter((item) => item.id !== id);
+    const nextParentId = target.parentId || "";
+    if (!objectiveCanMoveGroupToParent(movingIds, nextParentId)) {
+      return false;
+    }
+
+    const movingSet = new Set(movingIds);
+    const oldParentIds = new Set(movingNodes.map((node) => node.parentId || ""));
+    const withoutDragged = objectiveChildren(nextParentId).filter((item) => !movingSet.has(item.id));
     const targetIndex = withoutDragged.findIndex((item) => item.id === targetId);
 
-    if (fromIndex < 0 || targetIndex < 0) {
+    if (targetIndex < 0) {
       return false;
     }
 
     const insertIndex = targetIndex + (after ? 1 : 0);
-    if ((after && fromIndex === targetIndex + 1) || (!after && fromIndex === targetIndex)) {
+    const nextOrder = withoutDragged.slice();
+    nextOrder.splice(insertIndex, 0, ...movingNodes);
+    movingNodes.forEach((node) => {
+      node.parentId = nextParentId;
+    });
+    resequenceObjectiveSiblings(nextOrder);
+    oldParentIds.forEach((parentId) => {
+      if (parentId !== nextParentId) {
+        resequenceObjectiveSiblings(objectiveChildren(parentId).filter((item) => !movingSet.has(item.id)));
+      }
+    });
+    movingIds.forEach(refreshObjectiveTaskPaths);
+
+    setObjectiveSelection(movingIds);
+    return true;
+  }
+
+  function moveObjectivesInside(ids, targetId) {
+    const movingIds = objectiveTopLevelIds(ids);
+    const movingNodes = movingIds.map((id) => findObjective(id)).filter(Boolean);
+    const target = findObjective(targetId);
+    if (!movingNodes.length || !target || !objectiveCanMoveGroupInside(movingIds, targetId)) {
       return false;
     }
 
-    const nextOrder = withoutDragged.slice();
-    nextOrder.splice(insertIndex, 0, node);
-    const firstCreatedAt = Math.min(...siblings.map((item) => Number(item.createdAt) || Date.now()));
-    nextOrder.forEach((item, index) => {
+    const movingSet = new Set(movingIds);
+    const oldParentIds = new Set(movingNodes.map((node) => node.parentId || ""));
+    const currentChildren = objectiveChildren(targetId);
+    const currentMovingChildren = currentChildren.filter((item) => movingSet.has(item.id));
+    const alreadyLastChildren =
+      currentMovingChildren.length === movingNodes.length &&
+      currentChildren.slice(-movingNodes.length).every((item, index) => item.id === movingNodes[index].id);
+    const children = currentChildren.filter((item) => !movingSet.has(item.id));
+
+    if (alreadyLastChildren) {
+      setObjectiveSelection(movingIds);
+      return false;
+    }
+
+    movingNodes.forEach((node) => {
+      node.parentId = targetId;
+    });
+    children.push(...movingNodes);
+    resequenceObjectiveSiblings(children);
+    oldParentIds.forEach((parentId) => {
+      if (parentId !== targetId) {
+        resequenceObjectiveSiblings(objectiveChildren(parentId).filter((item) => !movingSet.has(item.id)));
+      }
+    });
+    movingIds.forEach(refreshObjectiveTaskPaths);
+    expandObjective(targetId);
+    setObjectiveSelection(movingIds);
+    return true;
+  }
+
+  function duplicateSelectedObjectives() {
+    const sourceIds = objectiveTopLevelIds(objectiveSelectedIds());
+    if (!sourceIds.length) {
+      return;
+    }
+
+    const clones = [];
+    const rootCloneBySource = new Map();
+    const now = Date.now();
+
+    sourceIds.forEach((id, sourceIndex) => {
+      const source = findObjective(id);
+      if (!source) {
+        return;
+      }
+
+      const rootClone = cloneObjectiveBranch(source, source.parentId || "", clones, now + sourceIndex * 1000);
+      rootCloneBySource.set(source.id, rootClone);
+    });
+
+    if (!clones.length) {
+      return;
+    }
+
+    state.objectives.push(...clones);
+
+    const cloneIds = new Set(clones.map((clone) => clone.id));
+    const parentIds = new Set(sourceIds.map((id) => findObjective(id)?.parentId || ""));
+    parentIds.forEach((parentId) => {
+      const nextOrder = [];
+      objectiveChildren(parentId).filter((node) => !cloneIds.has(node.id)).forEach((node) => {
+        nextOrder.push(node);
+        const clone = rootCloneBySource.get(node.id);
+        if (clone) {
+          nextOrder.push(clone);
+        }
+      });
+      resequenceObjectiveSiblings(nextOrder);
+    });
+
+    setObjectiveSelection(Array.from(rootCloneBySource.values()).map((node) => node.id));
+    objectiveMenuId = null;
+    objectiveRenameId = null;
+    objectiveDraftParentId = null;
+    saveState({ immediate: true });
+    render();
+  }
+
+  function cloneObjectiveBranch(source, parentId, clones, stamp) {
+    const clone = {
+      id: makeId(),
+      parentId,
+      text: source.text,
+      kind: source.kind,
+      taskId: "",
+      masked: Boolean(source.masked),
+      createdAt: stamp + clones.length + Math.random()
+    };
+    clones.push(clone);
+
+    objectiveChildren(source.id).forEach((child) => {
+      cloneObjectiveBranch(child, clone.id, clones, stamp);
+    });
+
+    return clone;
+  }
+
+  function resequenceObjectiveSiblings(items) {
+    if (!items.length) {
+      return;
+    }
+
+    const firstCreatedAt = Math.min(...items.map((item) => Number(item.createdAt) || Date.now()));
+    items.forEach((item, index) => {
       const objective = findObjective(item.id);
       if (objective) {
         objective.createdAt = firstCreatedAt + index;
       }
     });
+  }
 
-    selectedObjectiveId = id;
-    return true;
+  function objectiveTopLevelIds(ids) {
+    const uniqueIds = Array.from(new Set(ids)).filter((id) => findObjective(id));
+    const visibleOrder = allObjectiveIdsInOrder();
+    return uniqueIds
+      .filter((id) => !uniqueIds.some((otherId) => otherId !== id && objectiveIsDescendant(id, otherId)))
+      .sort((a, b) => visibleOrder.indexOf(a) - visibleOrder.indexOf(b));
+  }
+
+  function allObjectiveIdsInOrder(parentId = "") {
+    return objectiveChildren(parentId).flatMap((node) => [node.id, ...allObjectiveIdsInOrder(node.id)]);
+  }
+
+  function objectiveCanMoveGroupInside(ids, targetId) {
+    const target = findObjective(targetId);
+    return Boolean(
+      target &&
+      target.kind !== "task" &&
+      !target.taskId &&
+      objectiveCanMoveGroupToParent(ids, targetId)
+    );
+  }
+
+  function objectiveCanMoveGroupToParent(ids, parentId) {
+    const movingIds = objectiveTopLevelIds(ids);
+    return Boolean(movingIds.length && movingIds.every((id) => objectiveCanMoveToParent(id, parentId)));
+  }
+
+  function objectiveCanMoveInside(id, targetId) {
+    const target = findObjective(targetId);
+    return Boolean(
+      target &&
+      target.kind !== "task" &&
+      !target.taskId &&
+      objectiveCanMoveToParent(id, targetId)
+    );
+  }
+
+  function objectiveCanMoveToParent(id, parentId) {
+    return Boolean(id && parentId !== id && !objectiveIsDescendant(parentId, id));
+  }
+
+  function objectiveIsDescendant(id, ancestorId) {
+    let node = findObjective(id);
+    const seen = new Set();
+
+    while (node && !seen.has(node.id)) {
+      if (node.parentId === ancestorId) {
+        return true;
+      }
+      seen.add(node.id);
+      node = node.parentId ? findObjective(node.parentId) : null;
+    }
+
+    return false;
+  }
+
+  function refreshObjectiveTaskPaths(rootId) {
+    const affectedIds = new Set([rootId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      state.objectives.forEach((item) => {
+        if (!affectedIds.has(item.id) && affectedIds.has(item.parentId)) {
+          affectedIds.add(item.id);
+          changed = true;
+        }
+      });
+    }
+
+    state.objectives.forEach((item) => {
+      if (!affectedIds.has(item.id) || !item.taskId) {
+        return;
+      }
+
+      const task = findTask(item.taskId);
+      if (task) {
+        task.justification = objectivePath(item.id).join(" / ");
+      }
+    });
   }
 
   function closeObjectiveChromeOutside(event) {
@@ -2912,8 +3503,12 @@
     if (removeIds.has(objectiveRenameId)) {
       objectiveRenameId = null;
     }
+    selectedObjectiveIds = new Set(Array.from(selectedObjectiveIds).filter((nodeId) => !removeIds.has(nodeId)));
     if (removeIds.has(selectedObjectiveId)) {
       selectedObjectiveId = deleted?.parentId || state.objectives[0]?.id || null;
+      if (selectedObjectiveId) {
+        selectedObjectiveIds.add(selectedObjectiveId);
+      }
     }
 
     saveState({ immediate: true });
@@ -2949,7 +3544,7 @@
 
     node.kind = "task";
     node.taskId = task.id;
-    selectedObjectiveId = node.id;
+    setObjectiveSelection([node.id]);
     syncDraftFromTasks();
     state.currentPair = null;
     ensurePair();
@@ -2967,7 +3562,7 @@
     const taskId = node.taskId;
     node.kind = "objective";
     node.taskId = "";
-    selectedObjectiveId = node.id;
+    setObjectiveSelection([node.id]);
 
     removePlainObjectiveTask(taskId, node);
     syncDraftFromTasks();
@@ -3048,8 +3643,12 @@
     refs.profileHandle.textContent = `@${handle}`;
     refs.profileBio.textContent = profile.bio || "";
     renderAvatar(refs.profileAvatar, name, profile.avatarUrl);
-    refs.repScore.textContent = String(stats.score);
-    refs.doneMetric.textContent = String(stats.done);
+    if (refs.repScore) {
+      refs.repScore.textContent = String(stats.score);
+    }
+    if (refs.doneMetric) {
+      refs.doneMetric.textContent = String(stats.done);
+    }
     refs.supportMetric.textContent = String(stats.supporters);
     refs.proofCount.textContent = String(stats.proofs);
     refs.profileVisibility.value = profile.profileVisibility;
@@ -3097,7 +3696,9 @@
     refs.publicHandle.textContent = `@${snapshot.username || fallbackUsername(name)}`;
     refs.publicBio.textContent = snapshot.bio || "";
     renderAvatar(refs.publicAvatar, name, snapshot.avatarUrl || "");
-    refs.publicScore.textContent = String(snapshot.score);
+    if (refs.publicScore) {
+      refs.publicScore.textContent = String(snapshot.score);
+    }
     refs.publicProof.textContent = String(snapshot.proofs);
     refs.publicSupport.textContent = String(snapshot.supporters);
     refs.publicProofList.innerHTML = "";
@@ -3119,7 +3720,13 @@
     const email = session?.user?.email || "";
     const signedIn = Boolean(session);
 
-    refs.accountName.textContent = recoveryMode ? "New password" : signedIn ? email : "Sign in";
+    refs.accountName.textContent = recoveryMode
+      ? "New password"
+      : signedIn
+        ? email
+        : accountMode === "create"
+          ? "Create Account"
+          : "Sign in";
     refs.authForm.classList.toggle("is-hidden", signedIn || recoveryMode);
     refs.recoveryForm.classList.toggle("is-hidden", !recoveryMode);
     refs.accountActions.classList.toggle("is-hidden", !signedIn || recoveryMode);
@@ -4183,6 +4790,7 @@
     };
     objectiveDraftParentId = null;
     selectedObjectiveId = null;
+    selectedObjectiveIds.clear();
     objectiveRootOpen = false;
     objectiveMenuId = null;
     objectiveRenameId = null;
@@ -4208,6 +4816,7 @@
     pendingSupportDialog = false;
     objectiveDraftParentId = null;
     selectedObjectiveId = null;
+    selectedObjectiveIds.clear();
     objectiveRootOpen = false;
     objectiveMenuId = null;
     objectiveRenameId = null;

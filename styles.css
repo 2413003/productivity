@@ -62,19 +62,16 @@ summary:focus-visible {
 }
 
 .topbar {
-  min-height: 48px;
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 100;
+  width: auto;
+  min-height: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
-}
-
-.wordmark {
-  background: transparent;
-  color: var(--ink);
-  padding: 8px 0;
-  font-weight: 700;
-  font-size: clamp(1.15rem, 2vw, 1.45rem);
 }
 
 .nav {
@@ -373,6 +370,10 @@ summary:focus-visible {
   white-space: nowrap;
 }
 
+.map.has-objectives:not(.is-mindmap-view) .map-head {
+  display: none;
+}
+
 .map-head {
   align-items: flex-end;
   margin-bottom: clamp(18px, 4vw, 28px);
@@ -402,6 +403,70 @@ summary:focus-visible {
   gap: 8px;
 }
 
+.objective-selection-bar,
+.objective-bottleneck-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--ink);
+  padding: 5px;
+  box-shadow: 0 12px 34px rgba(21, 23, 19, 0.11);
+  transform: translateX(-50%);
+  backdrop-filter: blur(14px);
+}
+
+.objective-bottleneck-bar {
+  padding-left: 12px;
+}
+
+.objective-selection-bar output {
+  min-width: 28px;
+  padding: 0 5px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 750;
+  text-align: center;
+}
+
+.objective-bottleneck-bar span {
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.objective-bottleneck-bar output {
+  min-width: 24px;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.objective-selection-bar .icon-control,
+.objective-bottleneck-bar .icon-control {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.objective-selection-bar .icon-control:hover,
+.objective-selection-bar .icon-control:focus-visible,
+.objective-bottleneck-bar .icon-control:hover,
+.objective-bottleneck-bar .icon-control:focus-visible {
+  background: rgba(21, 23, 19, 0.06);
+}
+
 .map.is-mindmap-view .map-tools {
   position: absolute;
   top: 10px;
@@ -419,7 +484,8 @@ summary:focus-visible {
 }
 
 .map-add-trigger,
-.map-view-trigger {
+.map-view-trigger,
+.map-bottleneck-trigger {
   position: relative;
   width: 42px;
   min-width: 42px;
@@ -436,7 +502,8 @@ summary:focus-visible {
 }
 
 .map.is-mindmap-view .map-add-trigger,
-.map.is-mindmap-view .map-view-trigger {
+.map.is-mindmap-view .map-view-trigger,
+.map.is-mindmap-view .map-bottleneck-trigger {
   width: 36px;
   min-width: 36px;
   height: 36px;
@@ -460,7 +527,9 @@ summary:focus-visible {
 
 .map-add-trigger:hover,
 .map-view-trigger:hover,
-.map-view-trigger[aria-pressed="true"] {
+.map-bottleneck-trigger:hover,
+.map-view-trigger[aria-pressed="true"],
+.map-bottleneck-trigger[aria-pressed="true"] {
   background: var(--panel);
   color: var(--ink);
   transform: translateY(-1px);
@@ -468,6 +537,7 @@ summary:focus-visible {
 
 .map-add-trigger::after,
 .map-view-trigger::after,
+.map-bottleneck-trigger::after,
 .objective-action[data-tooltip]::after {
   content: attr(data-tooltip);
   position: absolute;
@@ -492,6 +562,8 @@ summary:focus-visible {
 .map-add-trigger:focus-visible::after,
 .map-view-trigger:hover::after,
 .map-view-trigger:focus-visible::after,
+.map-bottleneck-trigger:hover::after,
+.map-bottleneck-trigger:focus-visible::after,
 .objective-action[data-tooltip]:hover::after,
 .objective-action[data-tooltip]:focus-visible::after {
   opacity: 1;
@@ -499,7 +571,8 @@ summary:focus-visible {
 }
 
 .map-add-trigger::after,
-.map-view-trigger::after {
+.map-view-trigger::after,
+.map-bottleneck-trigger::after {
   top: auto;
   bottom: calc(100% + 8px);
   transform: translate(-50%, 3px);
@@ -776,6 +849,7 @@ body.is-mindmap-panning .mindmap-canvas {
 }
 
 .objective-pick {
+  position: relative;
   min-width: 0;
   width: fit-content;
   max-width: 100%;
@@ -798,6 +872,49 @@ body.is-mindmap-panning .mindmap-canvas {
 
 .objective-pick[aria-current="true"] {
   background: color-mix(in srgb, var(--accent) 10%, white);
+  color: var(--accent);
+}
+
+.objective-item.is-selected > .objective-node .objective-pick {
+  background: color-mix(in srgb, var(--accent) 10%, white);
+  color: var(--accent);
+}
+
+.objective-list.is-bottleneck-mode .objective-item:not(.is-bottleneck-candidate) > .objective-node .objective-pick {
+  opacity: 0.34;
+}
+
+.objective-list.is-bottleneck-mode .objective-branch-actions {
+  display: none !important;
+}
+
+.objective-list.is-bottleneck-mode .objective-item.is-bottleneck-candidate > .objective-node .objective-pick {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, var(--line));
+}
+
+.objective-list.is-bottleneck-mode .objective-item.is-bottleneck-candidate > .objective-node .objective-pick::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -18px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  transform: translateY(-50%);
+}
+
+.objective-list.is-bottleneck-mode .objective-item.is-bottleneck-candidate > .objective-node .objective-pick:hover,
+.objective-list.is-bottleneck-mode .objective-item.is-bottleneck-candidate > .objective-node .objective-pick:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.objective-item.is-bottleneck-chosen > .objective-node .objective-pick,
+.objective-item.is-bottleneck-chosen > .objective-node .objective-pick[aria-current="true"] {
+  background: var(--accent-soft);
   color: var(--accent);
 }
 
@@ -907,6 +1024,12 @@ body.is-objective-dragging .objective-pick {
 
 .objective-item.is-drop-after > .objective-node::after {
   bottom: -3px;
+}
+
+.objective-item.is-drop-inside > .objective-node .objective-pick {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .objective-drag-preview {
@@ -1451,6 +1574,14 @@ h2 {
   border-bottom: 1px solid var(--line);
 }
 
+.profile-metric-strip {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.public-metric-strip {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .metric-strip span {
   min-height: 76px;
   display: grid;
@@ -1808,16 +1939,12 @@ h2 {
   }
 
   .topbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .nav {
-    width: 100%;
+    top: 12px;
+    right: 12px;
   }
 
   .nav button {
-    flex: 1;
+    flex: 0 0 auto;
   }
 
   .compose-controls {
