@@ -318,11 +318,21 @@
     window.setInterval(renderDayTimer, 1000);
 
     handleHash();
-    await connectBackend();
-
-    if (pendingSupportDialog && !signInRequired()) {
-      window.setTimeout(() => openSupportDialog(), 120);
-    }
+    renderFastStartupView();
+    connectBackend()
+      .then(() => {
+        if (pendingSupportDialog && !signInRequired()) {
+          window.setTimeout(() => openSupportDialog(), 120);
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+        if (!session) {
+          activeView = "account";
+          setSyncStatus("Try again later");
+          render();
+        }
+      });
   }
 
   function loadState() {
@@ -573,6 +583,81 @@
     return backendConfigured() && (!session || recoveryMode);
   }
 
+  function renderFastStartupView() {
+    if (!backendConfigured()) {
+      render();
+      return;
+    }
+
+    if (recoveryMode) {
+      activeView = "account";
+      render();
+      return;
+    }
+
+    const persistedSession = readPersistedAuthSession();
+    if (persistedSession) {
+      session = persistedSession;
+      showAuthenticatedApp();
+      return;
+    }
+
+    activeView = "account";
+    render();
+  }
+
+  function readPersistedAuthSession() {
+    try {
+      const keys = [];
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (key && (key === "supabase.auth.token" || (key.startsWith("sb-") && key.includes("auth-token")))) {
+          keys.push(key);
+        }
+      }
+
+      for (const key of keys) {
+        const sessionHint = parsePersistedAuthSession(localStorage.getItem(key));
+        if (sessionHint) {
+          return sessionHint;
+        }
+      }
+    } catch (error) {
+      return null;
+    }
+
+    return null;
+  }
+
+  function parsePersistedAuthSession(raw) {
+    if (!raw) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      const source = parsed?.currentSession || parsed?.session || parsed;
+      const user = source?.user;
+      const token = source?.access_token || source?.accessToken || source?.refresh_token || source?.refreshToken;
+      if (!user?.id || !token) {
+        return null;
+      }
+
+      return {
+        access_token: source.access_token || source.accessToken || token,
+        refresh_token: source.refresh_token || source.refreshToken || "",
+        expires_at: source.expires_at || source.expiresAt || null,
+        user: {
+          ...user,
+          id: user.id,
+          email: user.email || ""
+        }
+      };
+    } catch (error) {
+      return null;
+    }
+  }
+
   function isAuthStorageEvent(event) {
     if (!event || event.storageArea !== localStorage) {
       return false;
@@ -709,9 +794,11 @@
       }
     } catch (error) {
       supabaseClient = null;
-      session = null;
       setSyncStatus("Try again later");
       console.error(error);
+      if (!session) {
+        activeView = "account";
+      }
       render();
     }
   }
