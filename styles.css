@@ -1838,7 +1838,7 @@ h2 {
 }
 
 .top-list .task-row:hover .task-actions,
-.top-list .task-row:focus-within .task-actions,
+.top-list .task-row:has(.task-actions :focus-visible) .task-actions,
 .top-list .task-row:has(.why-wrap:hover) .task-actions {
   opacity: 1;
   pointer-events: auto;
@@ -1850,8 +1850,7 @@ h2 {
   display: grid;
 }
 
-.why-wrap:hover,
-.why-wrap:focus-within {
+.why-wrap:hover {
   z-index: 110;
 }
 
@@ -1866,8 +1865,7 @@ h2 {
   height: 12px;
 }
 
-.why-wrap:hover::after,
-.why-wrap:focus-within::after {
+.why-wrap:hover::after {
   display: block;
 }
 
@@ -1886,7 +1884,7 @@ h2 {
 }
 
 .task-row:hover .row-meta,
-.task-row:focus-within .row-meta {
+.task-row:has(.row-meta:focus-visible) .row-meta {
   display: grid;
 }
 
@@ -1918,8 +1916,7 @@ h2 {
   backdrop-filter: blur(14px);
 }
 
-.why-wrap:hover .why-map-preview,
-.why-wrap:focus-within .why-map-preview {
+.why-wrap:hover .why-map-preview {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0) scale(1);

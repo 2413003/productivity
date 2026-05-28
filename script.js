@@ -2222,7 +2222,7 @@
     const hasBranch = children.length || isDrafting;
     const isOpening = openingObjectiveIds.has(node.id);
     const isClosing = closingObjectiveIds.has(node.id);
-    const isCollapsed = hasBranch && objectiveIsCollapsed(node.id) && !isDrafting && !(focusPathActive && isInFocusPath);
+    const isCollapsed = hasBranch && objectiveIsCollapsed(node.id) && !isDrafting;
     const item = document.createElement("li");
     item.className = "objective-item";
     item.classList.toggle("is-root", !node.parentId);
