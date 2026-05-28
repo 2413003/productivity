@@ -1051,20 +1051,6 @@ body.is-mindmap-panning .mindmap-canvas {
   opacity: 0.34;
 }
 
-.objective-list.is-focus-path-view > .objective-item.is-focus-side > .objective-node,
-.objective-list.is-focus-path-view .objective-branch > .objective-item.is-focus-side > .objective-node {
-  opacity: 0.34;
-  filter: saturate(0.7);
-  transition: opacity 140ms ease, filter 140ms ease;
-}
-
-.objective-list.is-focus-path-view .objective-item.is-focus-side > .objective-node:hover,
-.objective-list.is-focus-path-view .objective-item.is-focus-side > .objective-node:focus-within,
-.objective-list.is-focus-path-view .objective-item.is-menu-open > .objective-node {
-  opacity: 1;
-  filter: none;
-}
-
 .objective-list.is-focus-path-view .objective-item.is-focus-target > .objective-node .objective-pick,
 .objective-list.is-focus-path-view .objective-item.is-focus-target > .objective-node .objective-pick[aria-current="true"] {
   background: var(--accent-soft);

@@ -2309,8 +2309,7 @@
 
     const shouldRenderChildren =
       children.length &&
-      (!isCollapsed || isClosing) &&
-      (!focusPathActive || isInFocusPath || objectiveIsSelected(node.id) || objectiveMenuId === node.id);
+      (!isCollapsed || isClosing);
 
     if (shouldRenderChildren) {
       const childList = document.createElement("ul");
