@@ -189,7 +189,7 @@
 
   init();
 
-  function init() {
+  async function init() {
     refs.viewButtons.forEach((button) => {
       button.addEventListener("click", () => setView(button.dataset.viewButton));
     });
@@ -315,11 +315,10 @@
       }
     });
 
-    handleHash();
-    connectBackend();
-
     window.setInterval(renderDayTimer, 1000);
-    render();
+
+    handleHash();
+    await connectBackend();
 
     if (pendingSupportDialog && !signInRequired()) {
       window.setTimeout(() => openSupportDialog(), 120);
