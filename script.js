@@ -122,6 +122,9 @@
     accountName: document.getElementById("accountName"),
     syncStatus: document.getElementById("syncStatus"),
     accountNote: document.getElementById("accountNote"),
+    appsLauncherShell: document.getElementById("appsLauncherShell"),
+    appsLauncherToggle: document.getElementById("appsLauncherToggle"),
+    appsLauncherMenu: document.getElementById("appsLauncherMenu"),
     authForm: document.getElementById("authForm"),
     authEmail: document.getElementById("authEmail"),
     authPassword: document.getElementById("authPassword"),
@@ -167,6 +170,7 @@
   let objectiveRootOpen = false;
   let objectiveMenuId = null;
   let objectiveRenameId = null;
+  let objectiveActionHintId = null;
   let objectivePress = null;
   let objectivePressTimer = null;
   let objectiveDrag = null;
@@ -189,7 +193,10 @@
     refs.viewButtons.forEach((button) => {
       button.addEventListener("click", () => setView(button.dataset.viewButton));
     });
+    refs.appsLauncherToggle?.addEventListener("click", toggleAppsLauncher);
+    refs.appsLauncherMenu?.addEventListener("click", closeAppsLauncherFromTile);
     document.addEventListener("keydown", handlePageArrowKeydown);
+    document.addEventListener("keydown", closeAppsLauncherOnEscape);
 
     refs.taskInput.addEventListener("input", saveDraftInput);
     refs.dayTimer?.addEventListener("click", showDayTimerHint);
@@ -227,6 +234,7 @@
     document.addEventListener("pointerdown", closeObjectiveChromeOutside, true);
     document.addEventListener("pointerdown", hideDayTimerHintOutside, true);
     document.addEventListener("pointerdown", hideFocusStepperOutside, true);
+    document.addEventListener("pointerdown", closeAppsLauncherOutside, true);
     document.addEventListener("keydown", hideDayTimerHintOnEscape);
     document.addEventListener("keydown", hideFocusStepperOnEscape);
     refs.choiceA.addEventListener("click", () => chooseCurrent(0));
@@ -1728,6 +1736,45 @@
     );
   }
 
+  function toggleAppsLauncher(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    setAppsLauncherOpen(Boolean(refs.appsLauncherMenu?.hidden));
+  }
+
+  function closeAppsLauncherFromTile(event) {
+    if (event.target?.closest?.(".apps-tile")) {
+      setAppsLauncherOpen(false);
+    }
+  }
+
+  function closeAppsLauncherOutside(event) {
+    if (refs.appsLauncherMenu?.hidden || refs.appsLauncherShell?.contains(event.target)) {
+      return;
+    }
+
+    setAppsLauncherOpen(false);
+  }
+
+  function closeAppsLauncherOnEscape(event) {
+    if (event.key !== "Escape" || refs.appsLauncherMenu?.hidden) {
+      return;
+    }
+
+    setAppsLauncherOpen(false);
+    refs.appsLauncherToggle?.focus();
+  }
+
+  function setAppsLauncherOpen(isOpen) {
+    if (!refs.appsLauncherToggle || !refs.appsLauncherMenu) {
+      return;
+    }
+
+    refs.appsLauncherToggle.classList.toggle("is-active", isOpen);
+    refs.appsLauncherToggle.setAttribute("aria-expanded", String(isOpen));
+    refs.appsLauncherMenu.hidden = !isOpen;
+  }
+
   function pageViewByOffset(offset) {
     const views = PAGE_VIEW_ORDER.filter((view) => hasScreen(view) && shouldShowPageInPrimaryNav(view));
     if (!views.length) {
@@ -1808,6 +1855,7 @@
     const linkedTasks = state.objectives.filter((node) => node.taskId && findTask(node.taskId)).length;
     const view = objectiveView();
     const bottleneckCandidates = objectiveBottleneckCandidates();
+    const focusPathActive = objectiveFocusPathActive();
 
     if (view !== "list") {
       objectiveBottleneckMode = false;
@@ -1815,9 +1863,13 @@
     if (state.bottleneckTaskId && !findTask(state.bottleneckTaskId)) {
       state.bottleneckTaskId = "";
     }
+    if (objectiveActionHintId && !findObjective(objectiveActionHintId)) {
+      objectiveActionHintId = null;
+    }
 
     refs.objectiveMap?.classList.toggle("is-mindmap-view", view === "mindmap");
     refs.objectiveMap?.classList.toggle("has-objectives", state.objectives.length > 0);
+    refs.objectiveMap?.classList.toggle("is-focus-path", focusPathActive);
     refs.objectiveRootToggle?.classList.toggle("is-hidden", objectiveRootOpen);
     refs.objectiveViewToggle?.classList.toggle("is-hidden", objectiveRootOpen);
     refs.objectiveBottleneckToggle?.classList.toggle("is-hidden", objectiveRootOpen || view !== "list");
@@ -1825,6 +1877,8 @@
     refs.objectiveRootForm?.classList.toggle("is-hidden", !objectiveRootOpen);
     refs.objectiveTree?.classList.toggle("is-hidden", view !== "list");
     refs.objectiveTree?.classList.toggle("is-bottleneck-mode", objectiveBottleneckMode);
+    refs.objectiveTree?.classList.toggle("is-focus-path-view", focusPathActive);
+    refs.objectiveTree?.classList.toggle("has-single-selection", objectiveSelectedIds().length === 1);
     refs.objectiveMindmap?.classList.toggle("is-hidden", view !== "mindmap");
     refs.objectiveCanvas?.classList.toggle("is-mindmap", view === "mindmap");
     refs.objectiveCount.textContent = `${state.objectives.length} item${state.objectives.length === 1 ? "" : "s"}`;
@@ -1940,6 +1994,9 @@
     }
 
     const layout = objectiveMindmapLayout(roots);
+    const focusPathIds = objectiveFocusPathIds();
+    const focusTargetId = focusedBottleneckTaskId();
+    const focusPathActive = focusPathIds.size > 1;
     const svg = createSvg("svg");
     svg.classList.add("mindmap-links");
     svg.setAttribute("width", String(layout.width));
@@ -1962,6 +2019,9 @@
       button.classList.toggle("is-task", Boolean(node.taskId && findTask(node.taskId)));
       button.classList.toggle("is-selected", objectiveIsSelected(node.id));
       button.classList.toggle("is-masked", objectiveMaskedInPath(node.id));
+      button.classList.toggle("is-focus-path", focusPathIds.has(node.id));
+      button.classList.toggle("is-focus-side", focusPathActive && !focusPathIds.has(node.id));
+      button.classList.toggle("is-focus-target", Boolean(node.taskId && node.taskId === focusTargetId));
       button.type = "button";
       button.dataset.id = node.id;
       button.style.transform = `translate3d(${position.x}px, ${position.y}px, 0)`;
@@ -2098,7 +2158,16 @@
       const endY = childPosition.y + MINDMAP_NODE_HEIGHT / 2;
       const curve = Math.max(54, (endX - startX) * 0.52);
       path.setAttribute("d", `M ${startX} ${startY} C ${startX + curve} ${startY}, ${endX - curve} ${endY}, ${endX} ${endY}`);
-      path.classList.toggle("is-muted", objectiveMaskedInPath(node.id) || objectiveMaskedInPath(parent.id));
+      const focusPathIds = objectiveFocusPathIds();
+      const focusPathActive = focusPathIds.size > 1;
+      const linkInFocusPath = focusPathIds.has(node.id) && focusPathIds.has(parent.id);
+      path.classList.toggle(
+        "is-muted",
+        objectiveMaskedInPath(node.id) ||
+          objectiveMaskedInPath(parent.id) ||
+          (focusPathActive && !linkInFocusPath)
+      );
+      path.classList.toggle("is-focus-path", focusPathActive && linkInFocusPath);
       svg.appendChild(path);
     });
   }
@@ -2141,14 +2210,19 @@
   function createObjectiveItem(node, depth) {
     const isLinkedTask = Boolean(node.taskId && findTask(node.taskId));
     const task = objectiveTaskForNode(node);
+    const focusPathIds = objectiveFocusPathIds();
+    const focusTargetId = focusedBottleneckTaskId();
+    const focusPathActive = objectiveFocusPathActive();
+    const isInFocusPath = focusPathIds.has(node.id);
+    const isFocusTarget = Boolean(task && task.id === focusTargetId);
     const isBottleneckCandidate = objectiveBottleneckMode && Boolean(task);
-    const isChosenBottleneck = Boolean(task && state.bottleneckTaskId === task.id && !task.done);
+    const isChosenBottleneck = Boolean(task && focusTargetId === task.id && !task.done);
     const children = objectiveChildren(node.id);
     const isDrafting = objectiveDraftParentId === node.id;
     const hasBranch = children.length || isDrafting;
     const isOpening = openingObjectiveIds.has(node.id);
     const isClosing = closingObjectiveIds.has(node.id);
-    const isCollapsed = hasBranch && objectiveIsCollapsed(node.id) && !isDrafting;
+    const isCollapsed = hasBranch && objectiveIsCollapsed(node.id) && !isDrafting && !(focusPathActive && isInFocusPath);
     const item = document.createElement("li");
     item.className = "objective-item";
     item.classList.toggle("is-root", !node.parentId);
@@ -2160,6 +2234,10 @@
     item.classList.toggle("is-menu-open", objectiveMenuId === node.id);
     item.classList.toggle("is-renaming", objectiveRenameId === node.id);
     item.classList.toggle("is-masked", Boolean(node.masked));
+    item.classList.toggle("is-focus-path", isInFocusPath);
+    item.classList.toggle("is-focus-side", focusPathActive && !isInFocusPath);
+    item.classList.toggle("is-focus-target", isFocusTarget);
+    item.classList.toggle("needs-next-action", objectiveActionHintId === node.id);
     item.classList.toggle("is-bottleneck-candidate", isBottleneckCandidate);
     item.classList.toggle("is-bottleneck-chosen", isChosenBottleneck);
     const objectiveDropMode = objectiveDrag?.dropTargetId === node.id ? objectiveDrag.dropMode : "";
@@ -2229,7 +2307,12 @@
       item.appendChild(createObjectiveRenameForm(node));
     }
 
-    if (children.length && (!isCollapsed || isClosing)) {
+    const shouldRenderChildren =
+      children.length &&
+      (!isCollapsed || isClosing) &&
+      (!focusPathActive || isInFocusPath || objectiveIsSelected(node.id) || objectiveMenuId === node.id);
+
+    if (shouldRenderChildren) {
       const childList = document.createElement("ul");
       childList.className = "objective-list objective-branch";
       childList.classList.toggle("is-opening", isOpening);
@@ -2346,12 +2429,12 @@
     input.id = "objectiveDraftInput";
     input.type = "text";
     input.autocomplete = "off";
-    input.placeholder = "Step or task";
+    input.placeholder = objectiveActionHintId === parentId ? "Concrete next action" : "Step or task";
 
     const add = document.createElement("button");
     add.className = "primary";
     add.type = "submit";
-    add.textContent = "Add step";
+    add.textContent = objectiveActionHintId === parentId ? "Add task" : "Add step";
 
     const cancel = document.createElement("button");
     cancel.className = "subtle";
@@ -2518,7 +2601,11 @@
   function renderFocus() {
     const ranked = rankedTasks().filter((task) => !task.done);
     const topCount = clamp(state.topCount, 1, Math.max(1, ranked.length || state.topCount));
+    const primaryTask = ranked[0] || null;
     state.topCount = topCount;
+    if (primaryTask && state.bottleneckTaskId !== primaryTask.id) {
+      state.bottleneckTaskId = primaryTask.id;
+    }
 
     refs.focusTitle.textContent = "Biggest Bottleneck";
     refs.topCount.textContent = String(topCount);
@@ -2530,6 +2617,7 @@
 
     if (!ranked.length) {
       refs.topList.classList.remove("is-single-visible", "has-multiple-visible");
+      refs.topList.classList.remove("has-focus-task");
       const empty = document.createElement("li");
       empty.className = "empty";
       empty.textContent = state.tasks.length ? "Done" : "Add tasks";
@@ -2538,8 +2626,9 @@
       const visibleTasks = ranked.slice(0, topCount);
       refs.topList.classList.toggle("is-single-visible", visibleTasks.length === 1);
       refs.topList.classList.toggle("has-multiple-visible", visibleTasks.length > 1);
+      refs.topList.classList.toggle("has-focus-task", Boolean(primaryTask));
       visibleTasks.forEach((task, index) => {
-        refs.topList.appendChild(createTaskRow(task, index + 1, "done"));
+        refs.topList.appendChild(createTaskRow(task, index + 1, "done", { showPath: index === 0 }));
       });
     }
 
@@ -2566,14 +2655,53 @@
     const task = node.taskId ? findTask(node.taskId) : null;
 
     if (task) {
-      if (!task.done && state.bottleneckTaskId === task.id) {
+      if (!task.done && focusedBottleneckTaskId() === task.id) {
         return "Bottleneck";
       }
 
       return "";
     }
 
+    if (objectiveActionHintId === node.id) {
+      return "Add a concrete next action";
+    }
+
     return "";
+  }
+
+  function focusedBottleneckTask(ranked = null) {
+    const active = activeTasks();
+    if (!active.length) {
+      return null;
+    }
+
+    const ordered = ranked || rankedTasks().filter((task) => !task.done);
+    const chosen = state.bottleneckTaskId ? active.find((task) => task.id === state.bottleneckTaskId) : null;
+    return ordered[0] || chosen || active[0] || null;
+  }
+
+  function focusedBottleneckTaskId(ranked = null) {
+    return focusedBottleneckTask(ranked)?.id || "";
+  }
+
+  function objectiveFocusPathNodes() {
+    const taskId = focusedBottleneckTaskId();
+    return taskId ? objectivePathNodesForTask(taskId) : [];
+  }
+
+  function objectiveFocusPathIds() {
+    return new Set(objectiveFocusPathNodes().map((node) => node.id));
+  }
+
+  function objectiveFocusPathActive() {
+    return (
+      objectiveView() === "list" &&
+      !objectiveBottleneckMode &&
+      !objectiveDrag &&
+      !objectiveDraftParentId &&
+      !objectiveRenameId &&
+      objectiveFocusPathNodes().length > 1
+    );
   }
 
   function objectiveTaskForNode(node) {
@@ -2707,6 +2835,38 @@
     window.setTimeout(() => refs.objectiveRootInput?.focus(), 0);
   }
 
+  function moveObjectiveDraftParent(currentParentId, outdent) {
+    const rootInput = refs.objectiveRootInput;
+    const childInput = document.getElementById("objectiveDraftInput");
+    const sourceInput = childInput || rootInput;
+    const draft = sourceInput?.value || "";
+    const currentParent = currentParentId ? findObjective(currentParentId) : null;
+    const siblings = objectiveChildren(currentParentId || "");
+    const previousSibling = siblings[siblings.length - 1];
+    const nextParentId = outdent
+      ? currentParent?.parentId || ""
+      : previousSibling?.id || currentParentId || selectedObjectiveId || "";
+
+    if (nextParentId) {
+      objectiveRootOpen = false;
+      objectiveDraftParentId = nextParentId;
+      expandObjective(nextParentId);
+    } else {
+      objectiveDraftParentId = null;
+      objectiveRootOpen = true;
+    }
+
+    renderMap();
+    window.setTimeout(() => {
+      const target = nextParentId ? document.getElementById("objectiveDraftInput") : refs.objectiveRootInput;
+      if (target) {
+        target.value = draft;
+        target.focus();
+        target.setSelectionRange(target.value.length, target.value.length);
+      }
+    }, 0);
+  }
+
   function addRootObjective(event) {
     event.preventDefault();
     const text = refs.objectiveRootInput.value.trim();
@@ -2715,10 +2875,10 @@
       return;
     }
 
-    addObjective(text, "");
+    addObjective(text, "", { keepRootOpen: true });
     refs.objectiveRootInput.value = "";
-    objectiveRootOpen = false;
-    renderMap();
+    objectiveRootOpen = true;
+    window.setTimeout(() => refs.objectiveRootInput?.focus(), 0);
   }
 
   function submitObjectiveChild(event) {
@@ -2741,7 +2901,15 @@
       return;
     }
 
-    addObjective(text, form.dataset.parentId || "");
+    const parentId = form.dataset.parentId || "";
+    const shouldCreateTask = parentId && objectiveActionHintId === parentId && isConcreteTaskText(text);
+    const shouldContinueNextAction = parentId && objectiveActionHintId === parentId && !shouldCreateTask;
+    addObjective(text, parentId, {
+      keepDraftParent: true,
+      asTask: shouldCreateTask,
+      nextActionHint: shouldContinueNextAction
+    });
+    window.setTimeout(() => document.getElementById("objectiveDraftInput")?.focus(), 0);
   }
 
   function submitObjectiveRename(event, form) {
@@ -2765,6 +2933,25 @@
   }
 
   function handleObjectiveKeydown(event) {
+    if (event.key === "Enter" && event.target.matches("input")) {
+      const form = event.target.closest("#objectiveRootForm, .objective-child-form, .objective-rename-form");
+      if (form) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+      return;
+    }
+
+    if (event.key === "Tab" && event.target.matches("input")) {
+      const childForm = event.target.closest(".objective-child-form");
+      const rootForm = event.target.closest("#objectiveRootForm");
+      if (childForm || rootForm) {
+        event.preventDefault();
+        moveObjectiveDraftParent(childForm?.dataset.parentId || "", event.shiftKey);
+      }
+      return;
+    }
+
     if (event.key !== "Escape") {
       return;
     }
@@ -2905,9 +3092,9 @@
     }
   }
 
-  function addObjective(text, parentId) {
+  function addObjective(text, parentId, options = {}) {
     const id = makeId();
-    state.objectives.push({
+    const node = {
       id,
       parentId: parentId || "",
       text: text.replace(/\s+/g, " ").trim(),
@@ -2915,14 +3102,31 @@
       taskId: "",
       masked: false,
       createdAt: Date.now() + Math.random()
-    });
+    };
+    state.objectives.push(node);
+    if (options.asTask && isConcreteTaskText(node.text)) {
+      linkTaskToObjective(node);
+      state.currentPair = null;
+      ensurePair();
+      syncDraftFromTasks();
+    }
     setObjectiveSelection([id]);
-    objectiveDraftParentId = null;
+    objectiveDraftParentId = options.nextActionHint ? id : options.keepDraftParent ? parentId || "" : null;
+    if (options.keepRootOpen) {
+      objectiveRootOpen = true;
+    }
+    if (options.nextActionHint) {
+      objectiveActionHintId = id;
+      expandObjective(id);
+    } else if (objectiveActionHintId === parentId || objectiveActionHintId === id) {
+      objectiveActionHintId = null;
+    }
     if (parentId) {
       expandObjective(parentId);
     }
     saveState({ immediate: true });
     render();
+    return id;
   }
 
   function renameObjective(node, text) {
@@ -3716,6 +3920,9 @@
     if (removeIds.has(objectiveRenameId)) {
       objectiveRenameId = null;
     }
+    if (removeIds.has(objectiveActionHintId)) {
+      objectiveActionHintId = null;
+    }
     selectedObjectiveIds = new Set(Array.from(selectedObjectiveIds).filter((nodeId) => !removeIds.has(nodeId)));
     if (removeIds.has(selectedObjectiveId)) {
       selectedObjectiveId = deleted?.parentId || state.objectives[0]?.id || null;
@@ -3734,6 +3941,30 @@
       return null;
     }
 
+    if (!isConcreteTaskText(node.text)) {
+      objectiveActionHintId = node.id;
+      objectiveDraftParentId = node.id;
+      objectiveMenuId = null;
+      objectiveRenameId = null;
+      setObjectiveSelection([node.id]);
+      expandObjective(node.id);
+      render();
+      window.setTimeout(() => document.getElementById("objectiveDraftInput")?.focus(), 0);
+      return null;
+    }
+
+    const task = linkTaskToObjective(node);
+    objectiveActionHintId = null;
+    setObjectiveSelection([node.id]);
+    syncDraftFromTasks();
+    state.currentPair = null;
+    ensurePair();
+    saveState({ immediate: true });
+    render();
+    return task;
+  }
+
+  function linkTaskToObjective(node) {
     let task = node.taskId ? findTask(node.taskId) : null;
     if (!task) {
       task = state.tasks.find((item) => item.text.trim().toLowerCase() === node.text.toLowerCase());
@@ -3743,7 +3974,7 @@
       task = {
         id: makeId(),
         text: node.text,
-        justification: objectivePath(objectiveId).join(" / "),
+        justification: objectivePath(node.id).join(" / "),
         score: 1000,
         wins: 0,
         losses: 0,
@@ -3755,15 +3986,64 @@
       state.tasks.push(task);
     }
 
+    task.done = false;
+    task.doneAt = null;
+    task.justification = objectivePath(node.id).join(" / ");
     node.kind = "task";
     node.taskId = task.id;
-    setObjectiveSelection([node.id]);
-    syncDraftFromTasks();
-    state.currentPair = null;
-    ensurePair();
-    saveState({ immediate: true });
-    render();
     return task;
+  }
+
+  function isConcreteTaskText(text) {
+    const value = String(text || "").trim().toLowerCase();
+    const words = value.split(/\s+/).filter(Boolean);
+    if (words.length < 2) {
+      return false;
+    }
+
+    const first = words[0].replace(/[^a-z]/g, "");
+    return [
+      "add",
+      "apply",
+      "ask",
+      "book",
+      "build",
+      "buy",
+      "call",
+      "check",
+      "choose",
+      "clean",
+      "collect",
+      "complete",
+      "contact",
+      "create",
+      "decide",
+      "draft",
+      "email",
+      "finish",
+      "find",
+      "fix",
+      "get",
+      "make",
+      "message",
+      "open",
+      "pay",
+      "plan",
+      "prepare",
+      "read",
+      "record",
+      "review",
+      "schedule",
+      "send",
+      "set",
+      "share",
+      "start",
+      "submit",
+      "update",
+      "use",
+      "watch",
+      "write"
+    ].includes(first);
   }
 
   function markObjectiveAsStep(objectiveId) {
@@ -3775,6 +4055,9 @@
     const taskId = node.taskId;
     node.kind = "objective";
     node.taskId = "";
+    if (objectiveActionHintId === node.id) {
+      objectiveActionHintId = null;
+    }
     setObjectiveSelection([node.id]);
 
     removePlainObjectiveTask(taskId, node);
@@ -4042,9 +4325,13 @@
     return row;
   }
 
-  function createTaskRow(task, rank, action) {
+  function createTaskRow(task, rank, action, options = {}) {
+    const objectivePathNodes = objectivePathNodesForTask(task.id);
     const item = document.createElement("li");
     item.className = `task-row${task.done ? " done" : ""}`;
+    item.classList.toggle("is-primary-bottleneck", Boolean(options.showPath));
+    item.classList.toggle("has-focus-path", Boolean(options.showPath && objectivePathNodes.length));
+    item.dataset.taskId = task.id;
     item.style.animationDelay = `${Math.min(rank - 1, 7) * 28}ms`;
 
     const rankNode = document.createElement("span");
@@ -4059,10 +4346,13 @@
     textNode.textContent = task.text;
     main.appendChild(textNode);
 
+    if (options.showPath && objectivePathNodes.length) {
+      main.appendChild(createFocusPath(objectivePathNodes, task.id));
+    }
+
     const actions = document.createElement("span");
     actions.className = "task-actions";
 
-    const objectivePathNodes = objectivePathNodesForTask(task.id);
     const whyWrap = document.createElement("span");
     whyWrap.className = "why-wrap";
 
@@ -4099,6 +4389,32 @@
     actions.append(whyWrap, button);
     item.append(rankNode, main, actions);
     return item;
+  }
+
+  function createFocusPath(nodes, taskId) {
+    const path = document.createElement("span");
+    path.className = "focus-path";
+    path.setAttribute("aria-label", nodes.map((node) => node.text).join(" to "));
+
+    nodes.forEach((node, index) => {
+      const chip = document.createElement("span");
+      chip.className = "focus-path-node";
+      chip.classList.toggle("is-root", index === 0);
+      chip.classList.toggle("is-task", node.taskId === taskId);
+
+      const role = document.createElement("span");
+      role.className = "focus-path-role";
+      role.textContent = node.taskId === taskId ? "Task" : index === 0 ? "Objective" : "Step";
+
+      const label = document.createElement("span");
+      label.className = "focus-path-label";
+      label.textContent = node.text;
+
+      chip.append(role, label);
+      path.appendChild(chip);
+    });
+
+    return path;
   }
 
   function createWhyMapPreview(nodes, taskId) {
@@ -5064,6 +5380,7 @@
     objectiveRootOpen = false;
     objectiveMenuId = null;
     objectiveRenameId = null;
+    objectiveActionHintId = null;
     mindmapDrag = null;
     mindmapPan = null;
     document.body.classList.remove("is-mindmap-dragging", "is-mindmap-panning");
@@ -5090,6 +5407,7 @@
     objectiveRootOpen = false;
     objectiveMenuId = null;
     objectiveRenameId = null;
+    objectiveActionHintId = null;
     mindmapDrag = null;
     mindmapPan = null;
     document.body.classList.remove("is-mindmap-dragging", "is-mindmap-panning");

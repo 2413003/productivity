@@ -71,7 +71,7 @@ summary:focus-visible {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 16px;
+  gap: 8px;
 }
 
 .nav {
@@ -164,6 +164,161 @@ summary:focus-visible {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2;
+}
+
+.apps-launcher-shell {
+  position: relative;
+}
+
+.apps-launcher-toggle {
+  position: relative;
+  overflow: visible;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
+  padding: 0;
+  transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.apps-launcher-toggle:hover,
+.apps-launcher-toggle:focus-visible,
+.apps-launcher-toggle.is-active {
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 24px rgba(21, 23, 19, 0.12);
+}
+
+.apps-launcher-icon {
+  display: grid;
+  grid-template-columns: repeat(3, 4px);
+  gap: 3px;
+}
+
+.apps-launcher-icon span {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.86;
+}
+
+.apps-launcher-tooltip {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  z-index: 20;
+  min-width: max-content;
+  border-radius: 6px;
+  background: var(--ink);
+  color: white;
+  padding: 5px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.apps-launcher-toggle:hover .apps-launcher-tooltip,
+.apps-launcher-toggle:focus-visible .apps-launcher-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.apps-launcher-menu {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 225;
+  width: min(344px, calc(100vw - 36px));
+  max-height: min(72vh, 620px);
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid rgba(218, 224, 236, 0.94);
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(246, 248, 253, 0.98), rgba(237, 242, 250, 0.98));
+  box-shadow: 0 26px 60px rgba(40, 48, 73, 0.2);
+  backdrop-filter: blur(18px);
+}
+
+.apps-launcher-menu__title {
+  display: block;
+  color: #24324a;
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+
+.apps-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(223, 229, 240, 0.88);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.apps-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 96px;
+  padding: 10px 6px 12px;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  color: #233047;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+
+.apps-tile:hover,
+.apps-tile:focus-visible {
+  background: rgba(255, 255, 255, 0.9);
+  transform: translateY(-1px);
+}
+
+.apps-tile__icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.98);
+  color: #2f4b7c;
+  box-shadow: inset 0 0 0 1px rgba(214, 221, 234, 0.9), 0 8px 20px rgba(83, 103, 139, 0.12);
+}
+
+.apps-tile__icon img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.apps-tile__label {
+  width: 100%;
+  color: #2a3445;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+  overflow: hidden;
+  text-wrap: balance;
 }
 
 .icon-control {
@@ -668,6 +823,12 @@ summary:focus-visible {
   opacity: 0.22;
 }
 
+.mindmap-links path.is-focus-path {
+  opacity: 1;
+  stroke: color-mix(in srgb, var(--accent) 56%, var(--line-strong));
+  stroke-width: 3;
+}
+
 .mindmap-node {
   position: absolute;
   top: 0;
@@ -704,6 +865,17 @@ summary:focus-visible {
 
 .mindmap-node.is-task {
   border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
+}
+
+.mindmap-node.is-focus-side {
+  opacity: 0.32;
+}
+
+.mindmap-node.is-focus-target {
+  border-color: color-mix(in srgb, var(--accent) 56%, var(--line));
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: 0 10px 26px rgba(0, 128, 109, 0.12);
 }
 
 .mindmap-node.is-masked {
@@ -877,6 +1049,31 @@ body.is-mindmap-panning .mindmap-canvas {
 
 .objective-list.is-bottleneck-mode .objective-item:not(.is-bottleneck-candidate) > .objective-node .objective-pick {
   opacity: 0.34;
+}
+
+.objective-list.is-focus-path-view > .objective-item.is-focus-side > .objective-node,
+.objective-list.is-focus-path-view .objective-branch > .objective-item.is-focus-side > .objective-node {
+  opacity: 0.34;
+  filter: saturate(0.7);
+  transition: opacity 140ms ease, filter 140ms ease;
+}
+
+.objective-list.is-focus-path-view .objective-item.is-focus-side > .objective-node:hover,
+.objective-list.is-focus-path-view .objective-item.is-focus-side > .objective-node:focus-within,
+.objective-list.is-focus-path-view .objective-item.is-menu-open > .objective-node {
+  opacity: 1;
+  filter: none;
+}
+
+.objective-list.is-focus-path-view .objective-item.is-focus-target > .objective-node .objective-pick,
+.objective-list.is-focus-path-view .objective-item.is-focus-target > .objective-node .objective-pick[aria-current="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.objective-item.needs-next-action > .objective-node .objective-pick {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 32%, transparent);
 }
 
 .objective-list.is-bottleneck-mode .objective-branch-actions {
@@ -1054,6 +1251,7 @@ body.is-objective-dragging .objective-pick {
 
 .objective-item:not(.is-task-item) > .objective-node:hover > .objective-branch-actions,
 .objective-item:not(.is-task-item) > .objective-node:focus-within > .objective-branch-actions,
+.objective-list.has-single-selection .objective-item.is-selected:not(.is-task-item) > .objective-node > .objective-branch-actions,
 .objective-item.is-menu-open > .objective-node > .objective-branch-actions {
   display: flex;
 }
@@ -1064,6 +1262,7 @@ body.is-objective-dragging .objective-pick {
 
 .objective-item.is-task-item > .objective-node:hover > .objective-branch-actions.is-task-actions,
 .objective-item.is-task-item > .objective-node:focus-within > .objective-branch-actions.is-task-actions,
+.objective-list.has-single-selection .objective-item.is-selected.is-task-item > .objective-node > .objective-branch-actions.is-task-actions,
 .objective-item.is-menu-open > .objective-node > .objective-branch-actions.is-task-actions {
   display: flex;
 }
@@ -1378,9 +1577,7 @@ button:disabled {
   visibility: hidden;
 }
 
-.focus-head:hover .stepper,
 .focus-head.is-adjusting .stepper,
-.focus-head:focus-visible .stepper,
 .focus-head:has(.stepper:focus-within) .stepper {
   opacity: 1;
   pointer-events: auto;
@@ -1483,6 +1680,16 @@ h2 {
   border-bottom: 0;
 }
 
+.top-list.has-focus-task .task-row:not(.is-primary-bottleneck) {
+  opacity: 0.42;
+  transition: opacity 140ms ease;
+}
+
+.top-list.has-focus-task .task-row:not(.is-primary-bottleneck):hover,
+.top-list.has-focus-task .task-row:not(.is-primary-bottleneck):focus-within {
+  opacity: 1;
+}
+
 .rank {
   color: var(--accent);
   font-weight: 800;
@@ -1499,6 +1706,84 @@ h2 {
   overflow-wrap: anywhere;
   font-weight: 600;
   line-height: 1.34;
+}
+
+.focus-path {
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+  min-width: 0;
+  margin-top: 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 1px 2px 4px 1px;
+}
+
+.focus-path-node {
+  position: relative;
+  flex: 0 0 auto;
+  max-width: 180px;
+  min-height: 46px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
+  padding: 6px 9px;
+}
+
+.focus-path-node:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 5px);
+  width: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transform: translateY(-50%);
+}
+
+.focus-path-node:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 12px);
+  width: 5px;
+  height: 5px;
+  border-top: 2px solid var(--line-strong);
+  border-right: 2px solid var(--line-strong);
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.focus-path-node.is-root {
+  border-color: var(--line-strong);
+}
+
+.focus-path-node.is-task {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.focus-path-role {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.focus-path-node.is-task .focus-path-role {
+  color: currentColor;
+}
+
+.focus-path-label {
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.18;
 }
 
 .task-row.done .task-text {

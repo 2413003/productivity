@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=quiet-top-count">
+    <link rel="stylesheet" href="styles.css?v=goal-flow-2">
   </head>
   <body>
     <div class="shell">
@@ -50,6 +50,88 @@
             </svg>
           </button>
         </nav>
+        <div id="appsLauncherShell" class="apps-launcher-shell">
+          <button
+            id="appsLauncherToggle"
+            class="apps-launcher-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="appsLauncherMenu"
+            aria-label="MK apps"
+          >
+            <span class="apps-launcher-icon" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+            </span>
+            <span class="apps-launcher-tooltip" aria-hidden="true">MK apps</span>
+          </button>
+          <section id="appsLauncherMenu" class="apps-launcher-menu" hidden aria-label="MK apps">
+            <span class="apps-launcher-menu__title">MK apps</span>
+            <div class="apps-grid" aria-label="MK apps">
+              <a class="apps-tile" href="https://mkchess.co.uk/" target="_blank" rel="noreferrer noopener" aria-label="Open Chess">
+                <span class="apps-tile__icon">
+                  <img src="https://cdn.shopify.com/s/files/1/1017/6456/3275/files/Untitled_design_8.png?v=1776191651" alt="" loading="lazy" decoding="async">
+                </span>
+                <span class="apps-tile__label">Chess</span>
+              </a>
+              <a class="apps-tile" href="https://mkfood.co.uk/" target="_blank" rel="noreferrer noopener" aria-label="Open Food">
+                <span class="apps-tile__icon">
+                  <img src="https://mkfood.co.uk/cdn/shop/files/ChatGPT_Image_Nov_26_2025_10_55_01_AM.png?v=1770035659&amp;width=500" alt="" loading="lazy" decoding="async">
+                </span>
+                <span class="apps-tile__label">Food</span>
+              </a>
+              <a class="apps-tile" href="https://runmk.com/" target="_blank" rel="noreferrer noopener" aria-label="Open Redway">
+                <span class="apps-tile__icon">
+                  <img src="https://runmk.com/assets/images/image04.png?v=86cef636" alt="" loading="lazy" decoding="async">
+                </span>
+                <span class="apps-tile__label">Redway</span>
+              </a>
+              <a class="apps-tile" href="https://runmk.com/" target="_blank" rel="noreferrer noopener" aria-label="Open Park">
+                <span class="apps-tile__icon">
+                  <img src="https://cdn.shopify.com/s/files/1/1017/6456/3275/files/parking10.png?v=1776251596" alt="" loading="lazy" decoding="async">
+                </span>
+                <span class="apps-tile__label">Park</span>
+              </a>
+              <a class="apps-tile" href="https://runmk.com/" target="_blank" rel="noreferrer noopener" aria-label="Open Safety">
+                <span class="apps-tile__icon">
+                  <img src="https://cdn.shopify.com/s/files/1/1017/6456/3275/files/safety5.png?v=1776193239" alt="" loading="lazy" decoding="async">
+                </span>
+                <span class="apps-tile__label">Safety</span>
+              </a>
+              <a class="apps-tile" href="https://mksleep.carrd.co/" target="_blank" rel="noreferrer noopener" aria-label="Open Sleep">
+                <span class="apps-tile__icon">
+                  <img src="https://mksleep.carrd.co/assets/images/logo1.png?v=943d3eb2" alt="" loading="lazy" decoding="async">
+                </span>
+                <span class="apps-tile__label">Sleep</span>
+              </a>
+              <a class="apps-tile" href="https://2413003.github.io/mkfind2/" target="_blank" rel="noreferrer noopener" aria-label="Open Find">
+                <span class="apps-tile__icon">
+                  <img src="https://cdn.shopify.com/s/files/1/1017/6456/3275/files/find_app_logo_v2.svg?v=1776195834" alt="" loading="lazy" decoding="async">
+                </span>
+                <span class="apps-tile__label">Find</span>
+              </a>
+              <a class="apps-tile" href="https://mksleep.carrd.co/" target="_blank" rel="noreferrer noopener" aria-label="Open Finance">
+                <span class="apps-tile__icon">
+                  <img src="https://cdn.shopify.com/s/files/1/1017/6456/3275/files/Minimalist_finance_logo_design.png?v=1776193883" alt="" loading="lazy" decoding="async">
+                </span>
+                <span class="apps-tile__label">Finance</span>
+              </a>
+              <a class="apps-tile" href="https://mksleep.carrd.co/" target="_blank" rel="noreferrer noopener" aria-label="Open Ads">
+                <span class="apps-tile__icon">
+                  <img src="https://cdn.shopify.com/s/files/1/1017/6456/3275/files/ads_logo_google.png?v=1776351553" alt="" loading="lazy" decoding="async">
+                </span>
+                <span class="apps-tile__label">Ads</span>
+              </a>
+            </div>
+          </section>
+        </div>
       </header>
 
       <main class="stage">
@@ -418,6 +500,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=quiet-top-count"></script>
+    <script src="script.js?v=goal-flow-2"></script>
   </body>
 </html>
