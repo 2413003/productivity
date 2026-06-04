@@ -2,6 +2,7 @@
   const STORE_KEY = "priority-state-v1";
   const LEGACY_STORE_KEY = "two-choice-state-v1";
   const ACCOUNT_STORE_PREFIX = "do-account-state-v1:";
+  const ACCOUNT_EMAIL_KEY = "do-account-email-v1";
   const BACKEND_CONFIG_KEY = "do-supabase-config-v1";
   const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
   const DEFAULT_DAY_END_TIME = "18:00";
@@ -101,6 +102,15 @@
     proofEvidence: document.getElementById("proofEvidence"),
     cancelProofBtn: document.getElementById("cancelProofBtn"),
     skipProofBtn: document.getElementById("skipProofBtn"),
+    imageDialog: document.getElementById("imageDialog"),
+    imageForm: document.getElementById("imageForm"),
+    imageTask: document.getElementById("imageTask"),
+    imageUrlInput: document.getElementById("imageUrlInput"),
+    imageFileInput: document.getElementById("imageFileInput"),
+    imagePreview: document.getElementById("imagePreview"),
+    imagePreviewImg: document.getElementById("imagePreviewImg"),
+    removeImageBtn: document.getElementById("removeImageBtn"),
+    cancelImageBtn: document.getElementById("cancelImageBtn"),
     whyDialog: document.getElementById("whyDialog"),
     whyForm: document.getElementById("whyForm"),
     whyTask: document.getElementById("whyTask"),
@@ -125,10 +135,12 @@
     appsLauncherShell: document.getElementById("appsLauncherShell"),
     appsLauncherToggle: document.getElementById("appsLauncherToggle"),
     appsLauncherMenu: document.getElementById("appsLauncherMenu"),
+    authMore: document.getElementById("authMore"),
     authForm: document.getElementById("authForm"),
     authEmail: document.getElementById("authEmail"),
     authPassword: document.getElementById("authPassword"),
     signInBtn: document.getElementById("signInBtn"),
+    passwordModeBtn: document.getElementById("passwordModeBtn"),
     signUpBtn: document.getElementById("signUpBtn"),
     forgotPasswordBtn: document.getElementById("forgotPasswordBtn"),
     recoveryForm: document.getElementById("recoveryForm"),
@@ -152,10 +164,12 @@
   let pendingAuthRefresh = false;
   let activeView = initialView();
   let lastSyncedInput = "";
-  let accountMode = "sign-in";
+  let accountMode = "link";
   let recoveryMode = hasRecoveryLink();
   let proofTaskId = null;
   let proofCancelSnapshot = null;
+  let imageObjectiveId = null;
+  let imageFileDataUrl = "";
   let whyTaskId = null;
   let publicSnapshot = null;
   let pendingPublicProfileId = null;
@@ -235,8 +249,10 @@
     document.addEventListener("pointerdown", hideDayTimerHintOutside, true);
     document.addEventListener("pointerdown", hideFocusStepperOutside, true);
     document.addEventListener("pointerdown", closeAppsLauncherOutside, true);
+    document.addEventListener("pointerdown", closeAuthMoreOutside, true);
     document.addEventListener("keydown", hideDayTimerHintOnEscape);
     document.addEventListener("keydown", hideFocusStepperOnEscape);
+    document.addEventListener("keydown", closeAuthMoreOnEscape);
     refs.choiceA.addEventListener("click", () => chooseCurrent(0));
     refs.choiceB.addEventListener("click", () => chooseCurrent(1));
     refs.skipBtn.addEventListener("click", skipCurrent);
@@ -273,6 +289,18 @@
     refs.cancelProofBtn.addEventListener("click", cancelProofDialog);
     refs.skipProofBtn.addEventListener("click", closeProofDialog);
     refs.proofDialog.addEventListener("cancel", cancelProofDialog);
+    refs.imageForm?.addEventListener("submit", saveObjectiveImage);
+    refs.imageFileInput?.addEventListener("change", previewSelectedObjectiveImageFile);
+    refs.imageUrlInput?.addEventListener("input", () => {
+      imageFileDataUrl = "";
+      updateImagePreview(refs.imageUrlInput.value.trim());
+    });
+    refs.removeImageBtn?.addEventListener("click", removeObjectiveImage);
+    refs.cancelImageBtn?.addEventListener("click", closeImageDialog);
+    refs.imageDialog?.addEventListener("cancel", closeImageDialog);
+    refs.imageDialog?.addEventListener("paste", pasteObjectiveImage);
+    refs.imageDialog?.addEventListener("dragover", allowObjectiveImageDrop);
+    refs.imageDialog?.addEventListener("drop", dropObjectiveImage);
     refs.whyForm.addEventListener("submit", saveWhy);
     refs.cancelWhyBtn.addEventListener("click", closeWhyDialog);
     refs.supportForm.addEventListener("submit", saveSupport);
@@ -280,6 +308,7 @@
     refs.profileForm.addEventListener("submit", saveProfile);
     refs.cancelProfileBtn.addEventListener("click", closeProfileDialog);
     refs.authForm.addEventListener("submit", signIn);
+    refs.passwordModeBtn?.addEventListener("click", togglePasswordAuthMode);
     refs.signUpBtn.addEventListener("click", signUp);
     refs.forgotPasswordBtn.addEventListener("click", requestPasswordReset);
     refs.recoveryForm.addEventListener("submit", saveNewPassword);
@@ -414,6 +443,8 @@
           kind: node.kind === "task" ? "task" : "objective",
           taskId: typeof node.taskId === "string" ? node.taskId : "",
           masked: Boolean(node.masked),
+          imageUrl: typeof node.imageUrl === "string" ? node.imageUrl.trim() : "",
+          imageUpdatedAt: Number(node.imageUpdatedAt) || 0,
           createdAt: Number(node.createdAt) || Date.now()
         };
 
@@ -573,6 +604,24 @@
 
   function accountStoreKey(userId) {
     return `${ACCOUNT_STORE_PREFIX}${userId}`;
+  }
+
+  function rememberedAccountEmail() {
+    try {
+      return localStorage.getItem(ACCOUNT_EMAIL_KEY) || "";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function rememberAccountEmail(email) {
+    try {
+      if (email) {
+        localStorage.setItem(ACCOUNT_EMAIL_KEY, email);
+      }
+    } catch (error) {
+      // Ignored: remembered email is only a convenience.
+    }
   }
 
   function backendConfigured() {
@@ -863,6 +912,7 @@
 
     if (hadSession) {
       recoveryMode = false;
+      accountMode = "link";
       clearLocalAccountData();
       activeView = "account";
       setSyncStatus("Signed out");
@@ -911,8 +961,53 @@
 
   async function signIn(event) {
     event.preventDefault();
-    accountMode = "sign-in";
+    if (accountMode === "create") {
+      await createAccountWithPassword();
+      return;
+    }
+
+    if (accountMode === "password") {
+      await signInWithPassword();
+      return;
+    }
+
+    await sendSignInLink();
+  }
+
+  async function sendSignInLink() {
+    if (!supabaseClient) {
+      setSyncStatus("Try again later");
+      return;
+    }
+
+    const email = refs.authEmail.value.trim();
+    if (!email) {
+      setSyncStatus("Enter email");
+      refs.authEmail.focus();
+      return;
+    }
+
+    rememberAccountEmail(email);
+    const redirectTo = authRedirectUrl();
+    const options = {
+      shouldCreateUser: false
+    };
+    if (redirectTo) {
+      options.emailRedirectTo = redirectTo;
+    }
+
+    setSyncStatus("Sending link");
+    const { error } = await supabaseClient.auth.signInWithOtp({ email, options });
+    if (error) {
+      setSyncStatus(error.message);
+      return;
+    }
+
+    setSyncStatus("Check email");
     renderAccount();
+  }
+
+  async function signInWithPassword() {
     if (!supabaseClient) {
       setSyncStatus("Try again later");
       return;
@@ -922,9 +1017,15 @@
     const password = refs.authPassword.value;
     if (!email || !password) {
       setSyncStatus("Email + password");
+      if (!email) {
+        refs.authEmail.focus();
+      } else {
+        refs.authPassword.focus();
+      }
       return;
     }
 
+    rememberAccountEmail(email);
     setSyncStatus("Signing in");
     const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
     if (error) {
@@ -939,7 +1040,35 @@
     continueSessionStartup();
   }
 
-  async function signUp() {
+  function togglePasswordAuthMode() {
+    accountMode = accountMode === "link" ? "password" : "link";
+    setSyncStatus("");
+    closeAuthMore();
+    renderAccount();
+    window.setTimeout(() => {
+      if (accountMode === "password" && refs.authEmail.value.trim()) {
+        refs.authPassword.focus();
+      } else {
+        refs.authEmail.focus();
+      }
+    }, 0);
+  }
+
+  function signUp() {
+    accountMode = accountMode === "create" ? "link" : "create";
+    setSyncStatus("");
+    closeAuthMore();
+    renderAccount();
+    window.setTimeout(() => {
+      if (accountMode === "create" && refs.authEmail.value.trim()) {
+        refs.authPassword.focus();
+      } else {
+        refs.authEmail.focus();
+      }
+    }, 0);
+  }
+
+  async function createAccountWithPassword() {
     accountMode = "create";
     setSyncStatus("");
     renderAccount();
@@ -959,6 +1088,7 @@
       return;
     }
 
+    rememberAccountEmail(email);
     setSyncStatus("Creating");
     const { data, error } = await supabaseClient.auth.signUp({ email, password });
     if (error) {
@@ -979,6 +1109,7 @@
   }
 
   async function requestPasswordReset() {
+    closeAuthMore();
     if (!supabaseClient) {
       setSyncStatus("Try again later");
       return;
@@ -991,7 +1122,8 @@
       return;
     }
 
-    const redirectTo = passwordResetRedirectUrl();
+    rememberAccountEmail(email);
+    const redirectTo = authRedirectUrl();
     setSyncStatus("Sending");
     const { error } = await supabaseClient.auth.resetPasswordForEmail(
       email,
@@ -1054,6 +1186,7 @@
     await waitForCloudIdle();
     await supabaseClient.auth.signOut();
     recoveryMode = false;
+    accountMode = "link";
     refs.recoveryForm.reset();
     clearRecoveryUrl();
     session = null;
@@ -1667,6 +1800,13 @@
         existing.kind = existing.kind === "task" || node.kind === "task" ? "task" : "objective";
         existing.taskId = existing.taskId || node.taskId;
         existing.masked = Boolean(node.masked);
+        if ((Number(node.imageUpdatedAt) || 0) > (Number(existing.imageUpdatedAt) || 0)) {
+          existing.imageUrl = node.imageUrl || "";
+          existing.imageUpdatedAt = Number(node.imageUpdatedAt) || 0;
+        } else if (!existing.imageUrl && node.imageUrl && !existing.imageUpdatedAt) {
+          existing.imageUrl = node.imageUrl;
+          existing.imageUpdatedAt = Number(node.imageUpdatedAt) || 0;
+        }
         existing.createdAt = Math.min(existing.createdAt, node.createdAt);
         if (!Number.isFinite(existing.mapX) && Number.isFinite(node.mapX) && Number.isFinite(node.mapY)) {
           existing.mapX = node.mapX;
@@ -1849,6 +1989,26 @@
 
     setAppsLauncherOpen(false);
     refs.appsLauncherToggle?.focus();
+  }
+
+  function closeAuthMoreOutside(event) {
+    if (!refs.authMore?.open || refs.authMore.contains(event.target)) {
+      return;
+    }
+
+    closeAuthMore();
+  }
+
+  function closeAuthMoreOnEscape(event) {
+    if (event.key !== "Escape" || !refs.authMore?.open) {
+      return;
+    }
+
+    closeAuthMore();
+  }
+
+  function closeAuthMore() {
+    refs.authMore?.removeAttribute("open");
   }
 
   function setAppsLauncherOpen(isOpen) {
@@ -2113,6 +2273,11 @@
       button.style.transform = `translate3d(${position.x}px, ${position.y}px, 0)`;
       button.setAttribute("aria-label", node.text);
 
+      if (node.imageUrl) {
+        button.classList.add("has-image");
+        button.appendChild(createNodeImage(node, "mindmap-image-thumb"));
+      }
+
       const title = document.createElement("span");
       title.className = "mindmap-title";
       title.textContent = node.text;
@@ -2372,6 +2537,10 @@
     title.textContent = node.text;
 
     const metaText = objectiveMeta(node);
+    if (node.imageUrl) {
+      main.classList.add("has-image");
+      main.appendChild(createNodeImage(node, "objective-image-thumb"));
+    }
     main.appendChild(title);
     if (metaText) {
       const meta = document.createElement("span");
@@ -2486,7 +2655,14 @@
       maskButton.setAttribute("role", "menuitem");
       maskButton.textContent = node.masked ? "Show" : "Hide";
 
-      menu.append(renameButton, maskButton);
+      const imageButton = document.createElement("button");
+      imageButton.type = "button";
+      imageButton.dataset.action = "edit-image";
+      imageButton.dataset.id = node.id;
+      imageButton.setAttribute("role", "menuitem");
+      imageButton.textContent = node.imageUrl ? "Image" : "Add image";
+
+      menu.append(renameButton, imageButton, maskButton);
       moreWrap.appendChild(menu);
     }
 
@@ -2990,11 +3166,12 @@
     const shouldCreateTask = parentId && objectiveActionHintId === parentId && isConcreteTaskText(text);
     const shouldContinueNextAction = parentId && objectiveActionHintId === parentId && !shouldCreateTask;
     addObjective(text, parentId, {
-      keepDraftParent: true,
       asTask: shouldCreateTask,
       nextActionHint: shouldContinueNextAction
     });
-    window.setTimeout(() => document.getElementById("objectiveDraftInput")?.focus(), 0);
+    if (shouldContinueNextAction) {
+      window.setTimeout(() => document.getElementById("objectiveDraftInput")?.focus(), 0);
+    }
   }
 
   function submitObjectiveRename(event, form) {
@@ -3148,6 +3325,14 @@
       return;
     }
 
+    if (action === "edit-image") {
+      setObjectiveSelection([node.id]);
+      objectiveMenuId = null;
+      render();
+      window.setTimeout(() => openObjectiveImageDialog(node.id), 0);
+      return;
+    }
+
     if (action === "add-child") {
       setObjectiveSelection([node.id]);
       objectiveDraftParentId = node.id;
@@ -3186,6 +3371,8 @@
       kind: "objective",
       taskId: "",
       masked: false,
+      imageUrl: "",
+      imageUpdatedAt: 0,
       createdAt: Date.now() + Math.random()
     };
     state.objectives.push(node);
@@ -4316,19 +4503,35 @@
     const email = session?.user?.email || "";
     const signedIn = Boolean(session);
     const authReady = Boolean(supabaseClient);
+    const creating = accountMode === "create";
+    const passwordMode = accountMode === "password";
+    const showPassword = creating || passwordMode;
+
+    if (!signedIn && !recoveryMode && !refs.authEmail.value) {
+      refs.authEmail.value = rememberedAccountEmail();
+    }
 
     refs.accountName.textContent = recoveryMode
       ? "New password"
       : signedIn
         ? email
-        : accountMode === "create"
+        : creating
           ? "Create Account"
           : "Sign in";
     refs.authForm.classList.toggle("is-hidden", signedIn || recoveryMode);
     refs.recoveryForm.classList.toggle("is-hidden", !recoveryMode);
     refs.accountActions.classList.toggle("is-hidden", !signedIn || recoveryMode);
+    refs.authPassword.classList.toggle("is-hidden", !showPassword);
+    refs.authPassword.required = showPassword;
+    refs.authPassword.autocomplete = creating ? "new-password" : "current-password";
+    refs.authPassword.placeholder = creating ? "New password" : "Password";
+    refs.signInBtn.textContent = creating ? "Create account" : passwordMode ? "Sign in" : "Email me link";
+    refs.passwordModeBtn.textContent = passwordMode || creating ? "Email link" : "Use password";
+    refs.signUpBtn.textContent = creating ? "Sign in" : "Create account";
+    refs.forgotPasswordBtn.classList.toggle("is-hidden", !passwordMode);
     refs.signOutBtn.disabled = !signedIn;
     refs.signInBtn.disabled = !authReady;
+    refs.passwordModeBtn.disabled = !authReady;
     refs.signUpBtn.disabled = !authReady;
     refs.forgotPasswordBtn.disabled = !authReady;
     refs.savePasswordBtn.disabled = !authReady;
@@ -4410,6 +4613,36 @@
     return row;
   }
 
+  function taskImageForTask(taskId) {
+    const directNode = state.objectives.find((node) => node.taskId === taskId && node.imageUrl);
+    if (directNode) {
+      return directNode.imageUrl;
+    }
+
+    const pathNode = objectivePathNodesForTask(taskId)
+      .slice()
+      .reverse()
+      .find((node) => node.imageUrl);
+    return pathNode?.imageUrl || "";
+  }
+
+  function createNodeImage(node, className) {
+    return createImageNode(node.imageUrl, className);
+  }
+
+  function createImageNode(src, className) {
+    const image = document.createElement("img");
+    image.className = className;
+    image.src = src;
+    image.alt = "";
+    image.loading = "lazy";
+    image.decoding = "async";
+    image.addEventListener("error", () => {
+      image.remove();
+    });
+    return image;
+  }
+
   function createTaskRow(task, rank, action, options = {}) {
     const objectivePathNodes = objectivePathNodesForTask(task.id);
     const item = document.createElement("li");
@@ -4425,6 +4658,11 @@
 
     const main = document.createElement("span");
     main.className = "task-main";
+    const taskImage = taskImageForTask(task.id);
+    if (taskImage) {
+      main.classList.add("has-image");
+      main.appendChild(createImageNode(taskImage, "task-image-thumb"));
+    }
 
     const textNode = document.createElement("span");
     textNode.className = "task-text";
@@ -4486,6 +4724,11 @@
       chip.className = "focus-path-node";
       chip.classList.toggle("is-root", index === 0);
       chip.classList.toggle("is-task", node.taskId === taskId);
+      chip.classList.toggle("has-image", Boolean(node.imageUrl));
+
+      if (node.imageUrl) {
+        chip.appendChild(createNodeImage(node, "focus-path-image-thumb"));
+      }
 
       const role = document.createElement("span");
       role.className = "focus-path-role";
@@ -4516,6 +4759,11 @@
       item.className = "why-map-node";
       item.classList.toggle("is-root", index === 0);
       item.classList.toggle("is-task", node.taskId === taskId);
+      item.classList.toggle("has-image", Boolean(node.imageUrl));
+
+      if (node.imageUrl) {
+        item.appendChild(createNodeImage(node, "why-map-image-thumb"));
+      }
 
       const role = document.createElement("span");
       role.className = "why-map-role";
@@ -4833,6 +5081,208 @@
 
     closeProofDialog();
     render();
+  }
+
+  function openObjectiveImageDialog(objectiveId) {
+    const node = findObjective(objectiveId);
+    if (!node || !refs.imageDialog) {
+      return;
+    }
+
+    imageObjectiveId = node.id;
+    imageFileDataUrl = "";
+    refs.imageTask.textContent = node.text;
+    refs.imageUrlInput.value = node.imageUrl && !node.imageUrl.startsWith("data:") ? node.imageUrl : "";
+    refs.imageFileInput.value = "";
+    refs.removeImageBtn.disabled = !node.imageUrl;
+    refs.removeImageBtn.hidden = !node.imageUrl;
+    updateImagePreview(node.imageUrl);
+
+    if (typeof refs.imageDialog.showModal === "function") {
+      refs.imageDialog.showModal();
+      refs.imageUrlInput.focus();
+    }
+  }
+
+  function closeImageDialog() {
+    imageObjectiveId = null;
+    imageFileDataUrl = "";
+    if (refs.imageDialog?.open) {
+      refs.imageDialog.close();
+    }
+  }
+
+  async function previewSelectedObjectiveImageFile() {
+    const file = refs.imageFileInput.files?.[0];
+    if (!file) {
+      imageFileDataUrl = "";
+      updateImagePreview(refs.imageUrlInput.value.trim());
+      return;
+    }
+
+    if (!(await setObjectiveImageFilePreview(file))) {
+      refs.imageFileInput.value = "";
+    }
+  }
+
+  async function pasteObjectiveImage(event) {
+    if (!refs.imageDialog?.open) {
+      return;
+    }
+
+    const file = imageFileFromTransfer(event.clipboardData);
+    if (file) {
+      event.preventDefault();
+      await setObjectiveImageFilePreview(file);
+      return;
+    }
+
+    const pastedText = event.clipboardData?.getData("text/plain")?.trim();
+    if (pastedText && event.target !== refs.imageUrlInput && looksLikeImageSource(pastedText)) {
+      event.preventDefault();
+      imageFileDataUrl = "";
+      refs.imageUrlInput.value = pastedText;
+      refs.imageFileInput.value = "";
+      updateImagePreview(pastedText);
+    }
+  }
+
+  function allowObjectiveImageDrop(event) {
+    if (imageFileFromTransfer(event.dataTransfer)) {
+      event.preventDefault();
+    }
+  }
+
+  async function dropObjectiveImage(event) {
+    const file = imageFileFromTransfer(event.dataTransfer);
+    if (!file) {
+      return;
+    }
+
+    event.preventDefault();
+    await setObjectiveImageFilePreview(file);
+  }
+
+  async function setObjectiveImageFilePreview(file) {
+    if (!file?.type?.startsWith("image/")) {
+      updateImagePreview(refs.imageUrlInput.value.trim());
+      return false;
+    }
+
+    imageFileDataUrl = await imageFileToDataUrl(file);
+    refs.imageUrlInput.value = "";
+    refs.imageFileInput.value = "";
+    updateImagePreview(imageFileDataUrl);
+    return Boolean(imageFileDataUrl);
+  }
+
+  function imageFileFromTransfer(transfer) {
+    if (!transfer) {
+      return null;
+    }
+
+    const file = Array.from(transfer.files || []).find((item) => item?.type?.startsWith("image/"));
+    if (file) {
+      return file;
+    }
+
+    const item = Array.from(transfer.items || []).find(
+      (entry) => entry.kind === "file" && entry.type?.startsWith("image/")
+    );
+    return item?.getAsFile() || null;
+  }
+
+  function looksLikeImageSource(value) {
+    return (
+      value.startsWith("data:image/") ||
+      /^https?:\/\/\S+\.(?:avif|gif|jpe?g|png|svg|webp)(?:[?#]\S*)?$/i.test(value)
+    );
+  }
+
+  function updateImagePreview(src) {
+    const value = typeof src === "string" ? src.trim() : "";
+    if (!refs.imagePreview || !refs.imagePreviewImg) {
+      return;
+    }
+
+    refs.imagePreview.classList.toggle("is-hidden", !value);
+    refs.imagePreviewImg.src = value || "";
+  }
+
+  async function saveObjectiveImage(event) {
+    event.preventDefault();
+    const node = findObjective(imageObjectiveId);
+    if (!node) {
+      closeImageDialog();
+      return;
+    }
+
+    const value = imageFileDataUrl || refs.imageUrlInput.value.trim();
+    node.imageUrl = value;
+    node.imageUpdatedAt = Date.now();
+    closeImageDialog();
+    saveState({ immediate: true });
+    render();
+  }
+
+  function removeObjectiveImage() {
+    const node = findObjective(imageObjectiveId);
+    if (!node) {
+      closeImageDialog();
+      return;
+    }
+
+    node.imageUrl = "";
+    node.imageUpdatedAt = Date.now();
+    closeImageDialog();
+    saveState({ immediate: true });
+    render();
+  }
+
+  function imageFileToDataUrl(file) {
+    return new Promise((resolve) => {
+      const image = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      const fallback = () => {
+        readImageFileAsDataUrl(file).then(resolve);
+      };
+      image.onload = () => {
+        const maxSide = 960;
+        const ratio = Math.min(1, maxSide / Math.max(image.width, image.height));
+        const width = Math.max(1, Math.round(image.width * ratio));
+        const height = Math.max(1, Math.round(image.height * ratio));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        URL.revokeObjectURL(objectUrl);
+        if (!context) {
+          fallback();
+          return;
+        }
+
+        try {
+          context.drawImage(image, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", 0.82));
+        } catch (error) {
+          fallback();
+        }
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        fallback();
+      };
+      image.src = objectUrl;
+    });
+  }
+
+  function readImageFileAsDataUrl(file) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(file);
+    });
   }
 
   function openWhyDialog(task) {
@@ -5323,7 +5773,7 @@
     return window.location.href.split("#")[0];
   }
 
-  function passwordResetRedirectUrl() {
+  function authRedirectUrl() {
     try {
       const url = new URL(baseUrl());
       if (!["http:", "https:"].includes(url.protocol)) {

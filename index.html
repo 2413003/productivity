@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=goal-flow-7">
+    <link rel="stylesheet" href="styles.css?v=goal-flow-15">
   </head>
   <body>
     <div class="shell">
@@ -408,12 +408,18 @@
 
             <form class="auth-form" id="authForm">
               <input id="authEmail" type="email" autocomplete="email" placeholder="Email">
-              <input id="authPassword" type="password" autocomplete="current-password" placeholder="Password">
-              <div class="focus-actions">
-                <button class="primary" type="submit" id="signInBtn">Sign in</button>
-                <button class="subtle" type="button" id="signUpBtn">Create account</button>
+              <input id="authPassword" class="is-hidden" type="password" autocomplete="current-password" placeholder="Password">
+              <div class="focus-actions auth-actions">
+                <button class="primary" type="submit" id="signInBtn">Email me link</button>
+                <details class="auth-more" id="authMore">
+                  <summary aria-label="More">...</summary>
+                  <div class="auth-more-menu">
+                    <button class="text-action" type="button" id="passwordModeBtn">Use password</button>
+                    <button class="text-action" type="button" id="signUpBtn">Create account</button>
+                    <button class="text-action" type="button" id="forgotPasswordBtn">Forgot password</button>
+                  </div>
+                </details>
               </div>
-              <button class="text-action" type="button" id="forgotPasswordBtn">Forgot password</button>
             </form>
 
             <form class="auth-form is-hidden" id="recoveryForm">
@@ -448,6 +454,34 @@
         <div class="dialog-actions">
           <button class="subtle" value="skip" type="button" id="skipProofBtn">Skip</button>
           <button class="primary" value="save" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="imageDialog">
+      <form method="dialog" id="imageForm">
+        <button class="modal-close" type="button" id="cancelImageBtn" aria-label="Cancel">
+          <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12" />
+            <path d="M18 6 6 18" />
+          </svg>
+        </button>
+        <p class="kicker">Image</p>
+        <h2 id="imageTask"></h2>
+        <label class="modal-field">
+          Image URL
+          <input id="imageUrlInput" type="url" autocomplete="off" placeholder="https://...">
+        </label>
+        <label class="modal-file">
+          <input id="imageFileInput" type="file" accept="image/*">
+          <span>Upload or paste</span>
+        </label>
+        <div class="image-preview is-hidden" id="imagePreview" aria-hidden="true">
+          <img id="imagePreviewImg" alt="">
+        </div>
+        <div class="dialog-actions">
+          <button class="subtle" type="button" id="removeImageBtn">Remove</button>
+          <button class="primary" type="submit">Save</button>
         </div>
       </form>
     </dialog>
@@ -500,6 +534,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=goal-flow-7"></script>
+    <script src="script.js?v=goal-flow-15"></script>
   </body>
 </html>
