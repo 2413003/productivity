@@ -7,6 +7,7 @@
   const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
   const DEFAULT_DAY_END_TIME = "18:00";
   const PAGE_VIEW_ORDER = ["map", "input", "choose", "focus", "reputation"];
+  const CRM_VIEWS = ["people", "map", "labour", "money", "attention", "trust"];
   const BRANCH_MOTION_MS = 190;
   const OBJECTIVE_DRAG_HOLD_MS = 420;
   const MINDMAP_NODE_WIDTH = 184;
@@ -132,6 +133,9 @@
     accountName: document.getElementById("accountName"),
     syncStatus: document.getElementById("syncStatus"),
     accountNote: document.getElementById("accountNote"),
+    mainMenuShell: document.getElementById("mainMenuShell"),
+    mainMenuToggle: document.getElementById("mainMenuToggle"),
+    mainMenu: document.getElementById("mainMenu"),
     appsLauncherShell: document.getElementById("appsLauncherShell"),
     appsLauncherToggle: document.getElementById("appsLauncherToggle"),
     appsLauncherMenu: document.getElementById("appsLauncherMenu"),
@@ -148,7 +152,32 @@
     recoveryConfirm: document.getElementById("recoveryConfirm"),
     savePasswordBtn: document.getElementById("savePasswordBtn"),
     signOutBtn: document.getElementById("signOutBtn"),
-    accountActions: document.getElementById("accountActions")
+    accountActions: document.getElementById("accountActions"),
+    crmCityInput: document.getElementById("crmCityInput"),
+    crmProfileButtons: Array.from(document.querySelectorAll("[data-crm-profile]")),
+    crmTabs: Array.from(document.querySelectorAll("[data-crm-view]")),
+    crmPanels: Array.from(document.querySelectorAll("[data-crm-panel]")),
+    crmPersonForm: document.getElementById("crmPersonForm"),
+    crmNameInput: document.getElementById("crmNameInput"),
+    crmAreaInput: document.getElementById("crmAreaInput"),
+    crmLabourInput: document.getElementById("crmLabourInput"),
+    crmSpendInput: document.getElementById("crmSpendInput"),
+    crmViewsInput: document.getElementById("crmViewsInput"),
+    crmPeopleList: document.getElementById("crmPeopleList"),
+    crmMapCity: document.getElementById("crmMapCity"),
+    crmMapCount: document.getElementById("crmMapCount"),
+    crmMapPlot: document.getElementById("crmMapPlot"),
+    crmLabourTotal: document.getElementById("crmLabourTotal"),
+    crmLabourList: document.getElementById("crmLabourList"),
+    crmSpendTotal: document.getElementById("crmSpendTotal"),
+    crmMoneyList: document.getElementById("crmMoneyList"),
+    crmViewsTotal: document.getElementById("crmViewsTotal"),
+    crmAttentionList: document.getElementById("crmAttentionList"),
+    crmTrustRing: document.getElementById("crmTrustRing"),
+    crmTrustTotal: document.getElementById("crmTrustTotal"),
+    crmTrustProfile: document.getElementById("crmTrustProfile"),
+    crmTrustCount: document.getElementById("crmTrustCount"),
+    crmTrustList: document.getElementById("crmTrustList")
   };
 
   let state = loadState();
@@ -205,11 +234,20 @@
 
   async function init() {
     refs.viewButtons.forEach((button) => {
-      button.addEventListener("click", () => setView(button.dataset.viewButton));
+      button.addEventListener("click", () => {
+        if (button.closest("#mainMenu")) {
+          setMainMenuOpen(false);
+        }
+
+        setView(button.dataset.viewButton);
+      });
     });
+    refs.mainMenuToggle?.addEventListener("click", toggleMainMenu);
+    refs.mainMenu?.addEventListener("click", closeMainMenuFromItem);
     refs.appsLauncherToggle?.addEventListener("click", toggleAppsLauncher);
     refs.appsLauncherMenu?.addEventListener("click", closeAppsLauncherFromTile);
     document.addEventListener("keydown", handlePageArrowKeydown);
+    document.addEventListener("keydown", closeMainMenuOnEscape);
     document.addEventListener("keydown", closeAppsLauncherOnEscape);
 
     refs.taskInput.addEventListener("input", saveDraftInput);
@@ -248,6 +286,7 @@
     document.addEventListener("pointerdown", closeObjectiveChromeOutside, true);
     document.addEventListener("pointerdown", hideDayTimerHintOutside, true);
     document.addEventListener("pointerdown", hideFocusStepperOutside, true);
+    document.addEventListener("pointerdown", closeMainMenuOutside, true);
     document.addEventListener("pointerdown", closeAppsLauncherOutside, true);
     document.addEventListener("pointerdown", closeAuthMoreOutside, true);
     document.addEventListener("keydown", hideDayTimerHintOnEscape);
@@ -307,6 +346,16 @@
     refs.cancelSupportBtn.addEventListener("click", closeSupportDialog);
     refs.profileForm.addEventListener("submit", saveProfile);
     refs.cancelProfileBtn.addEventListener("click", closeProfileDialog);
+    refs.crmCityInput?.addEventListener("input", saveCrmCity);
+    refs.crmProfileButtons.forEach((button) => {
+      button.addEventListener("click", () => setCrmProfile(button.dataset.crmProfile));
+    });
+    refs.crmTabs.forEach((button) => {
+      button.addEventListener("click", () => setCrmView(button.dataset.crmView));
+    });
+    refs.crmPersonForm?.addEventListener("submit", addCrmPerson);
+    refs.crmPeopleList?.addEventListener("click", handleCrmPersonAction);
+    refs.crmTrustList?.addEventListener("input", handleCrmTrustInput);
     refs.authForm.addEventListener("submit", signIn);
     refs.passwordModeBtn?.addEventListener("click", togglePasswordAuthMode);
     refs.signUpBtn.addEventListener("click", signUp);
@@ -392,6 +441,7 @@
       sprintStartTaps: Number(saved.sprintStartTaps) || 0,
       tasks: normalizeTasks(saved.tasks),
       objectives: normalizeObjectives(saved.objectives),
+      crm: normalizeCrm(saved.crm),
       collapsedObjectives: Array.isArray(saved.collapsedObjectives)
         ? saved.collapsedObjectives.filter((id) => typeof id === "string" && id)
         : [],
@@ -467,6 +517,49 @@
     return nodes.filter((node) => !objectiveCreatesCycle(node, nodes));
   }
 
+  function normalizeCrm(crm = {}) {
+    const source = crm && typeof crm === "object" ? crm : {};
+    const view = CRM_VIEWS.includes(source.view) ? source.view : "people";
+    const profile = source.profile === "org" ? "org" : "me";
+    const city = typeof source.city === "string" && source.city.trim() ? source.city.trim() : "Milton Keynes";
+
+    return {
+      view,
+      profile,
+      city,
+      people: normalizeCrmPeople(source.people)
+    };
+  }
+
+  function normalizeCrmPeople(people) {
+    return Array.isArray(people)
+      ? people
+          .filter((person) => person && typeof person.name === "string")
+          .map((person) => {
+            const id = typeof person.id === "string" && person.id ? person.id : makeId();
+            const name = person.name.replace(/\s+/g, " ").trim();
+            const area = typeof person.area === "string" ? person.area.replace(/\s+/g, " ").trim() : "";
+            const location = crmLocationForPerson({ ...person, id, name, area });
+            const fallbackTrust = Number.isFinite(Number(person.trust)) ? Number(person.trust) : 50;
+
+            return {
+              id,
+              name,
+              area,
+              x: location.x,
+              y: location.y,
+              labourHours: Math.max(0, Number(person.labourHours) || 0),
+              spend: Math.max(0, Number(person.spend) || 0),
+              views: Math.max(0, Number(person.views) || 0),
+              trustMe: clamp(Number.isFinite(Number(person.trustMe)) ? Number(person.trustMe) : fallbackTrust, 0, 100),
+              trustOrg: clamp(Number.isFinite(Number(person.trustOrg)) ? Number(person.trustOrg) : fallbackTrust, 0, 100),
+              createdAt: Number(person.createdAt) || Date.now()
+            };
+          })
+          .filter((person) => person.name)
+      : [];
+  }
+
   function objectiveCreatesCycle(node, nodes) {
     const byId = new Map(nodes.map((item) => [item.id, item]));
     const seen = new Set([node.id]);
@@ -499,6 +592,7 @@
       currentPair: null,
       comparisons: [],
       pairHistory: [],
+      crm: normalizeCrm(),
       reputation: {
         profileId: makeId(),
         profile: normalizeProfile(),
@@ -736,7 +830,7 @@
   }
 
   function isAccountDataView(view) {
-    return ["map", "input", "choose", "focus", "reputation"].includes(view);
+    return ["map", "input", "choose", "focus", "reputation", "crm"].includes(view);
   }
 
   function initialView() {
@@ -1733,6 +1827,7 @@
       draftText: primary?.draftText || secondary?.draftText || "",
       tasks: mergeTaskLists(primary?.tasks || [], secondary?.tasks || []),
       objectives: mergeObjectiveMaps(primary?.objectives || [], secondary?.objectives || []),
+      crm: mergeCrm(primary?.crm, secondary?.crm),
       reputation: {
         profileId: primary?.reputation?.profileId || secondary?.reputation?.profileId || makeId(),
         profile: mergeProfiles(secondary?.reputation?.profile, primary?.reputation?.profile),
@@ -1742,6 +1837,29 @@
     };
 
     return result.tasks.length || !primary?.tasks?.length ? result : primary;
+  }
+
+  function mergeCrm(primaryCrm, secondaryCrm) {
+    const primary = normalizeCrm(primaryCrm);
+    const secondary = normalizeCrm(secondaryCrm);
+    const people = [];
+    const byId = new Set();
+
+    [...primary.people, ...secondary.people].forEach((person) => {
+      if (byId.has(person.id)) {
+        return;
+      }
+
+      byId.add(person.id);
+      people.push(person);
+    });
+
+    return {
+      view: primary.view || secondary.view || "people",
+      profile: primary.profile || secondary.profile || "me",
+      city: primary.city || secondary.city || "Milton Keynes",
+      people
+    };
   }
 
   function mergeTaskLists(primaryTasks, secondaryTasks) {
@@ -1962,6 +2080,45 @@
     );
   }
 
+  function toggleMainMenu(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    setMainMenuOpen(Boolean(refs.mainMenu?.hidden));
+  }
+
+  function closeMainMenuFromItem(event) {
+    if (event.target?.closest?.("[data-view-button]")) {
+      setMainMenuOpen(false);
+    }
+  }
+
+  function closeMainMenuOutside(event) {
+    if (refs.mainMenu?.hidden || refs.mainMenuShell?.contains(event.target)) {
+      return;
+    }
+
+    setMainMenuOpen(false);
+  }
+
+  function closeMainMenuOnEscape(event) {
+    if (event.key !== "Escape" || refs.mainMenu?.hidden) {
+      return;
+    }
+
+    setMainMenuOpen(false);
+    refs.mainMenuToggle?.focus();
+  }
+
+  function setMainMenuOpen(isOpen) {
+    if (!refs.mainMenuToggle || !refs.mainMenu) {
+      return;
+    }
+
+    refs.mainMenuToggle.classList.toggle("is-active", isOpen);
+    refs.mainMenuToggle.setAttribute("aria-expanded", String(isOpen));
+    refs.mainMenu.hidden = !isOpen;
+  }
+
   function toggleAppsLauncher(event) {
     event.preventDefault();
     event.stopPropagation();
@@ -2064,6 +2221,7 @@
     renderChoose();
     renderFocus();
     renderReputation();
+    renderCrm();
     renderPublic();
     renderAccount();
   }
@@ -4416,6 +4574,366 @@
     return index >= 0 ? index + 1 : null;
   }
 
+  function renderCrm() {
+    if (!refs.crmPeopleList || !refs.crmMapPlot) {
+      return;
+    }
+
+    state.crm = normalizeCrm(state.crm);
+    const crm = state.crm;
+    const people = [...crm.people].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    if (document.activeElement !== refs.crmCityInput) {
+      refs.crmCityInput.value = crm.city;
+    }
+
+    refs.crmProfileButtons.forEach((button) => {
+      const isActive = button.dataset.crmProfile === crm.profile;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+
+    refs.crmTabs.forEach((button) => {
+      const isActive = button.dataset.crmView === crm.view;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-current", isActive ? "page" : "false");
+    });
+
+    refs.crmPanels.forEach((panel) => {
+      panel.classList.toggle("is-active", panel.dataset.crmPanel === crm.view);
+    });
+
+    renderCrmPeople(people);
+    renderCrmMap(people, crm.city);
+    renderCrmMetric(refs.crmLabourList, refs.crmLabourTotal, people, "labourHours", formatCrmHours);
+    renderCrmMetric(refs.crmMoneyList, refs.crmSpendTotal, people, "spend", formatCrmMoney);
+    renderCrmMetric(refs.crmAttentionList, refs.crmViewsTotal, people, "views", formatCrmViews);
+    renderCrmTrust(people);
+  }
+
+  function setCrmProfile(profile) {
+    if (!["me", "org"].includes(profile)) {
+      return;
+    }
+
+    state.crm = normalizeCrm(state.crm);
+    state.crm.profile = profile;
+    saveState();
+    renderCrm();
+  }
+
+  function setCrmView(view) {
+    if (!CRM_VIEWS.includes(view)) {
+      return;
+    }
+
+    state.crm = normalizeCrm(state.crm);
+    state.crm.view = view;
+    saveState();
+    renderCrm();
+  }
+
+  function saveCrmCity() {
+    state.crm = normalizeCrm(state.crm);
+    state.crm.city = refs.crmCityInput.value.trim() || "Milton Keynes";
+    saveState();
+    renderCrmMap(state.crm.people, state.crm.city);
+  }
+
+  function addCrmPerson(event) {
+    event.preventDefault();
+    state.crm = normalizeCrm(state.crm);
+
+    const name = refs.crmNameInput.value.replace(/\s+/g, " ").trim();
+    if (!name) {
+      refs.crmNameInput.focus();
+      return;
+    }
+
+    const person = {
+      id: makeId(),
+      name,
+      area: refs.crmAreaInput.value.replace(/\s+/g, " ").trim(),
+      labourHours: Math.max(0, Number(refs.crmLabourInput.value) || 0),
+      spend: Math.max(0, Number(refs.crmSpendInput.value) || 0),
+      views: Math.max(0, Number(refs.crmViewsInput.value) || 0),
+      trustMe: 50,
+      trustOrg: 50,
+      createdAt: Date.now()
+    };
+    const location = crmLocationForPerson(person);
+    state.crm.people.push({ ...person, x: location.x, y: location.y });
+
+    refs.crmPersonForm.reset();
+    refs.crmPersonForm.closest("details")?.removeAttribute("open");
+    saveState({ immediate: true });
+    renderCrm();
+  }
+
+  function handleCrmPersonAction(event) {
+    const button = event.target.closest("[data-crm-action]");
+    if (!button) {
+      return;
+    }
+
+    const id = button.dataset.id;
+    if (button.dataset.crmAction === "delete") {
+      state.crm = normalizeCrm(state.crm);
+      state.crm.people = state.crm.people.filter((person) => person.id !== id);
+      saveState({ immediate: true });
+      renderCrm();
+    }
+  }
+
+  function handleCrmTrustInput(event) {
+    const input = event.target.closest("[data-crm-trust]");
+    if (!input) {
+      return;
+    }
+
+    state.crm = normalizeCrm(state.crm);
+    const person = state.crm.people.find((item) => item.id === input.dataset.id);
+    if (!person) {
+      return;
+    }
+
+    person[crmTrustKey()] = clamp(Number(input.value) || 0, 0, 100);
+    input.value = String(person[crmTrustKey()]);
+    input.style.setProperty("--trust-level", `${person[crmTrustKey()]}%`);
+    input.closest(".crm-trust-row")?.querySelector(".crm-trust-value")?.replaceChildren(`${person[crmTrustKey()]}%`);
+    saveState();
+    renderCrmTrustSummary(state.crm.people);
+  }
+
+  function renderCrmPeople(people) {
+    refs.crmPeopleList.innerHTML = "";
+    if (!people.length) {
+      refs.crmPeopleList.appendChild(createCrmEmpty("Add a person"));
+      return;
+    }
+
+    people.forEach((person, index) => {
+      const item = document.createElement("li");
+      item.className = "crm-person-row";
+      item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+
+      const main = document.createElement("span");
+      main.className = "crm-person-main";
+
+      const name = document.createElement("span");
+      name.className = "crm-person-name";
+      name.textContent = person.name;
+
+      const meta = document.createElement("span");
+      meta.className = "crm-person-meta";
+      meta.textContent = person.area || state.crm.city;
+
+      main.append(name, meta);
+
+      const stats = document.createElement("span");
+      stats.className = "crm-person-stats";
+      stats.textContent = `${formatCrmHours(person.labourHours)} · ${formatCrmMoney(person.spend)} · ${formatCrmViews(person.views)}`;
+
+      const remove = document.createElement("button");
+      remove.className = "icon-control crm-person-delete";
+      remove.type = "button";
+      remove.dataset.crmAction = "delete";
+      remove.dataset.id = person.id;
+      remove.setAttribute("aria-label", `Delete ${person.name}`);
+      remove.dataset.tooltip = "Delete";
+      remove.appendChild(createControlIcon("trash"));
+
+      item.append(main, stats, remove);
+      refs.crmPeopleList.appendChild(item);
+    });
+  }
+
+  function renderCrmTrust(people) {
+    if (!refs.crmTrustList || !refs.crmTrustRing) {
+      return;
+    }
+
+    const key = crmTrustKey();
+    const sorted = [...people].sort((a, b) => crmTrustValue(b, key) - crmTrustValue(a, key));
+
+    renderCrmTrustSummary(sorted);
+    refs.crmTrustList.innerHTML = "";
+
+    if (!sorted.length) {
+      refs.crmTrustList.appendChild(createCrmEmpty("No trust data"));
+      return;
+    }
+
+    sorted.forEach((person, index) => {
+      const value = crmTrustValue(person, key);
+      const item = document.createElement("li");
+      item.className = "crm-trust-row";
+      item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+
+      const label = document.createElement("label");
+      const labelId = `crm-trust-${person.id}`;
+      label.setAttribute("for", labelId);
+      label.textContent = person.name;
+
+      const valueNode = document.createElement("output");
+      valueNode.className = "crm-trust-value";
+      valueNode.setAttribute("for", labelId);
+      valueNode.textContent = `${value}%`;
+
+      const input = document.createElement("input");
+      input.id = labelId;
+      input.type = "range";
+      input.min = "0";
+      input.max = "100";
+      input.step = "1";
+      input.value = String(value);
+      input.dataset.crmTrust = key;
+      input.dataset.id = person.id;
+      input.style.setProperty("--trust-level", `${value}%`);
+      input.setAttribute("aria-label", `${person.name} trust in ${crmTrustProfileLabel().toLowerCase()}`);
+
+      item.append(label, valueNode, input);
+      refs.crmTrustList.appendChild(item);
+    });
+  }
+
+  function renderCrmTrustSummary(people) {
+    if (!refs.crmTrustRing || !refs.crmTrustTotal || !refs.crmTrustProfile || !refs.crmTrustCount) {
+      return;
+    }
+
+    const key = crmTrustKey();
+    const total = people.reduce((sum, person) => sum + crmTrustValue(person, key), 0);
+    const average = people.length ? Math.round(total / people.length) : 0;
+
+    refs.crmTrustRing.style.setProperty("--trust", `${average * 3.6}deg`);
+    refs.crmTrustTotal.textContent = `${average}%`;
+    refs.crmTrustProfile.textContent = crmTrustProfileLabel();
+    refs.crmTrustCount.textContent = `${people.length} ${people.length === 1 ? "person" : "people"}`;
+  }
+
+  function renderCrmMap(people, city) {
+    refs.crmMapCity.textContent = city || "City";
+    refs.crmMapCount.textContent = `${people.length} ${people.length === 1 ? "person" : "people"}`;
+    refs.crmMapPlot.innerHTML = "";
+
+    if (!people.length) {
+      refs.crmMapPlot.appendChild(createCrmEmpty("No points", "span"));
+      return;
+    }
+
+    people.forEach((person) => {
+      const point = document.createElement("button");
+      point.className = "crm-map-point";
+      point.type = "button";
+      point.style.setProperty("--x", `${person.x}%`);
+      point.style.setProperty("--y", `${person.y}%`);
+      point.setAttribute("aria-label", `${person.name}, ${person.area || city}`);
+      point.dataset.label = person.name;
+      refs.crmMapPlot.appendChild(point);
+    });
+  }
+
+  function renderCrmMetric(list, totalNode, people, key, formatter) {
+    const sorted = [...people].sort((a, b) => (Number(b[key]) || 0) - (Number(a[key]) || 0));
+    const total = sorted.reduce((sum, person) => sum + (Number(person[key]) || 0), 0);
+    const max = Math.max(1, ...sorted.map((person) => Number(person[key]) || 0));
+    totalNode.textContent = formatter(total);
+    list.innerHTML = "";
+
+    if (!sorted.length) {
+      list.appendChild(createCrmEmpty("No data"));
+      return;
+    }
+
+    sorted.forEach((person, index) => {
+      const value = Number(person[key]) || 0;
+      const item = document.createElement("li");
+      item.className = "crm-metric-row";
+      item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+
+      const label = document.createElement("span");
+      label.className = "crm-metric-label";
+      label.textContent = person.name;
+
+      const amount = document.createElement("output");
+      amount.className = "crm-metric-value";
+      amount.textContent = formatter(value);
+
+      const track = document.createElement("span");
+      track.className = "crm-metric-track";
+      const fill = document.createElement("span");
+      fill.style.transform = `scaleX(${clamp(value / max, 0.03, 1)})`;
+      track.appendChild(fill);
+
+      item.append(label, amount, track);
+      list.appendChild(item);
+    });
+  }
+
+  function crmTrustKey() {
+    return state.crm?.profile === "org" ? "trustOrg" : "trustMe";
+  }
+
+  function crmTrustValue(person, key = crmTrustKey()) {
+    return clamp(Number(person?.[key]) || 0, 0, 100);
+  }
+
+  function crmTrustProfileLabel() {
+    return state.crm?.profile === "org" ? "Org" : "Me";
+  }
+
+  function createCrmEmpty(text, tag = "li") {
+    const empty = document.createElement(tag);
+    empty.className = "empty crm-empty";
+    empty.textContent = text;
+    return empty;
+  }
+
+  function crmLocationForPerson(person) {
+    const x = Number(person.x);
+    const y = Number(person.y);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return {
+        x: clamp(x, 6, 94),
+        y: clamp(y, 8, 92)
+      };
+    }
+
+    const seed = hashText(`${person.area || ""}:${person.name || ""}:${person.id || ""}`);
+    return {
+      x: 8 + (seed % 84),
+      y: 10 + (Math.floor(seed / 97) % 80)
+    };
+  }
+
+  function hashText(text) {
+    return Array.from(String(text)).reduce((hash, char) => {
+      const next = (hash << 5) - hash + char.charCodeAt(0);
+      return next >>> 0;
+    }, 2166136261);
+  }
+
+  function formatCrmHours(value) {
+    const number = Number(value) || 0;
+    return `${Number.isInteger(number) ? number : number.toFixed(1)}h`;
+  }
+
+  function formatCrmMoney(value) {
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: "GBP",
+      maximumFractionDigits: 0
+    }).format(Number(value) || 0);
+  }
+
+  function formatCrmViews(value) {
+    return new Intl.NumberFormat("en-GB", {
+      notation: Number(value) >= 10000 ? "compact" : "standard",
+      maximumFractionDigits: 1
+    }).format(Number(value) || 0);
+  }
+
   function renderReputation() {
     const stats = reputationStats();
     const profile = state.reputation.profile;
@@ -4518,6 +5036,8 @@
         : creating
           ? "Create Account"
           : "Sign in";
+    refs.accountName.classList.toggle("is-visually-hidden", !signedIn && !recoveryMode);
+    refs.accountName.closest(".rep-head")?.classList.toggle("is-auth-heading-hidden", !signedIn && !recoveryMode);
     refs.authForm.classList.toggle("is-hidden", signedIn || recoveryMode);
     refs.recoveryForm.classList.toggle("is-hidden", !recoveryMode);
     refs.accountActions.classList.toggle("is-hidden", !signedIn || recoveryMode);

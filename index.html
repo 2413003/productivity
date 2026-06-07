@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=goal-flow-15">
+    <link rel="stylesheet" href="styles.css?v=goal-flow-18">
   </head>
   <body>
     <div class="shell">
@@ -50,6 +50,26 @@
             </svg>
           </button>
         </nav>
+        <div id="mainMenuShell" class="main-menu-shell">
+          <button
+            id="mainMenuToggle"
+            class="main-menu-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="mainMenu"
+            aria-label="Menu"
+            data-tooltip="Menu"
+          >
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 7h16" />
+              <path d="M4 12h16" />
+              <path d="M4 17h16" />
+            </svg>
+          </button>
+          <section id="mainMenu" class="main-menu" hidden aria-label="Menu">
+            <button type="button" data-view-button="crm">CRM</button>
+          </section>
+        </div>
         <div id="appsLauncherShell" class="apps-launcher-shell">
           <button
             id="appsLauncherToggle"
@@ -376,6 +396,101 @@
           </div>
         </section>
 
+        <section class="screen" data-screen="crm" aria-labelledby="crm-title">
+          <div class="crm">
+            <div class="crm-head">
+              <div>
+                <p class="kicker">CRM</p>
+                <h1 id="crm-title">Relationships</h1>
+              </div>
+              <div class="crm-head-actions">
+                <div class="crm-profile-toggle" role="group" aria-label="CRM profile">
+                  <button type="button" data-crm-profile="me">Me</button>
+                  <button type="button" data-crm-profile="org">Org</button>
+                </div>
+                <input id="crmCityInput" type="text" autocomplete="off" placeholder="City">
+              </div>
+            </div>
+
+            <nav class="crm-tabs" aria-label="CRM views">
+              <button type="button" data-crm-view="people">People</button>
+              <button type="button" data-crm-view="map">Map</button>
+              <button type="button" data-crm-view="labour">Labour</button>
+              <button type="button" data-crm-view="money">Money</button>
+              <button type="button" data-crm-view="attention">Attention</button>
+              <button type="button" data-crm-view="trust">Trust</button>
+            </nav>
+
+            <details class="crm-add">
+              <summary aria-label="Add person">
+                <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
+              </summary>
+              <form class="crm-form" id="crmPersonForm">
+                <input id="crmNameInput" type="text" autocomplete="off" placeholder="Name">
+                <input id="crmAreaInput" type="text" autocomplete="off" placeholder="Area / postcode">
+                <input id="crmLabourInput" type="number" min="0" step="0.25" inputmode="decimal" placeholder="Hours / month">
+                <input id="crmSpendInput" type="number" min="0" step="1" inputmode="decimal" placeholder="£ / month">
+                <input id="crmViewsInput" type="number" min="0" step="1" inputmode="numeric" placeholder="Views / month">
+                <button class="primary" type="submit">Add</button>
+              </form>
+            </details>
+
+            <section class="crm-panel" data-crm-panel="people" aria-label="People">
+              <ul class="crm-people-list" id="crmPeopleList"></ul>
+            </section>
+
+            <section class="crm-panel" data-crm-panel="map" aria-label="Map">
+              <div class="crm-map">
+                <div class="crm-map-label">
+                  <span id="crmMapCity">City</span>
+                  <output id="crmMapCount">0 people</output>
+                </div>
+                <div class="crm-map-plot" id="crmMapPlot" aria-label="CRM city map"></div>
+              </div>
+            </section>
+
+            <section class="crm-panel" data-crm-panel="labour" aria-label="Labour">
+              <div class="crm-metric-head">
+                <span>Hours / month</span>
+                <output id="crmLabourTotal">0h</output>
+              </div>
+              <ul class="crm-metric-list" id="crmLabourList"></ul>
+            </section>
+
+            <section class="crm-panel" data-crm-panel="money" aria-label="Money">
+              <div class="crm-metric-head">
+                <span>Spend / month</span>
+                <output id="crmSpendTotal">£0</output>
+              </div>
+              <ul class="crm-metric-list is-money" id="crmMoneyList"></ul>
+            </section>
+
+            <section class="crm-panel" data-crm-panel="attention" aria-label="Attention">
+              <div class="crm-metric-head">
+                <span>Views / month</span>
+                <output id="crmViewsTotal">0</output>
+              </div>
+              <ul class="crm-metric-list" id="crmAttentionList"></ul>
+            </section>
+
+            <section class="crm-panel" data-crm-panel="trust" aria-label="Trust">
+              <div class="crm-trust-summary">
+                <div class="crm-trust-ring" id="crmTrustRing" style="--trust: 0deg">
+                  <output id="crmTrustTotal">0%</output>
+                </div>
+                <div>
+                  <span id="crmTrustProfile">Me</span>
+                  <output id="crmTrustCount">0 people</output>
+                </div>
+              </div>
+              <ul class="crm-trust-list" id="crmTrustList"></ul>
+            </section>
+          </div>
+        </section>
+
         <section class="screen" data-screen="public" aria-labelledby="public-title">
           <div class="public-profile">
             <div class="rep-head">
@@ -534,6 +649,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=goal-flow-15"></script>
+    <script src="script.js?v=goal-flow-18"></script>
   </body>
 </html>
