@@ -251,6 +251,7 @@
   let mindmapDrag = null;
   let mindmapPan = null;
   let mindmapViewportPrimed = false;
+  let editingBeliefId = null;
   let openingObjectiveIds = new Set();
   let closingObjectiveIds = new Set();
   let branchMotionTimers = new Map();
@@ -398,6 +399,8 @@
     });
     refs.beliefForm?.addEventListener("submit", addBelief);
     refs.beliefList?.addEventListener("click", handleLearnAction);
+    refs.beliefList?.addEventListener("submit", saveBeliefEdit);
+    refs.beliefList?.addEventListener("keydown", handleLearnKeydown);
     refs.learnPersonForm?.addEventListener("submit", addLearnPerson);
     refs.learnPersonList?.addEventListener("click", handleLearnAction);
     refs.authForm.addEventListener("submit", signIn);
@@ -5357,12 +5360,74 @@
     state.learn = normalizeLearn(state.learn);
     const id = button.dataset.id;
 
+    if (button.dataset.learnAction === "edit-belief") {
+      editingBeliefId = id;
+      renderLearn();
+      window.requestAnimationFrame(() => {
+        refs.beliefList?.querySelector(".vault-edit-form input[name='beliefText']")?.focus();
+      });
+      return;
+    }
+
+    if (button.dataset.learnAction === "cancel-edit-belief") {
+      editingBeliefId = null;
+      renderLearn();
+      return;
+    }
+
     if (button.dataset.learnAction === "delete-belief") {
       state.learn.beliefs = state.learn.beliefs.filter((item) => item.id !== id);
+      if (editingBeliefId === id) {
+        editingBeliefId = null;
+      }
     } else if (button.dataset.learnAction === "delete-person") {
       state.learn.people = state.learn.people.filter((item) => item.id !== id);
     }
 
+    saveState({ immediate: true });
+    renderLearn();
+  }
+
+  function handleLearnKeydown(event) {
+    if (!["Enter", " "].includes(event.key)) {
+      return;
+    }
+
+    const action = event.target.closest("[data-learn-action]");
+    if (!action || action.tagName === "BUTTON") {
+      return;
+    }
+
+    event.preventDefault();
+    action.click();
+  }
+
+  function saveBeliefEdit(event) {
+    const form = event.target.closest(".vault-edit-form");
+    if (!form) {
+      return;
+    }
+
+    event.preventDefault();
+    state.learn = normalizeLearn(state.learn);
+    const belief = state.learn.beliefs.find((item) => item.id === form.dataset.id);
+    if (!belief) {
+      editingBeliefId = null;
+      renderLearn();
+      return;
+    }
+
+    const textInput = form.elements.namedItem("beliefText");
+    const whyInput = form.elements.namedItem("beliefWhy");
+    const text = textInput.value.replace(/\s+/g, " ").trim();
+    if (!text) {
+      textInput.focus();
+      return;
+    }
+
+    belief.text = text;
+    belief.why = whyInput.value.replace(/\s+/g, " ").trim();
+    editingBeliefId = null;
     saveState({ immediate: true });
     renderLearn();
   }
@@ -5376,11 +5441,21 @@
       return;
     }
 
+    if (editingBeliefId && !beliefs.some((belief) => belief.id === editingBeliefId)) {
+      editingBeliefId = null;
+    }
+
     beliefs.forEach((belief, index) => {
+      if (belief.id === editingBeliefId) {
+        refs.beliefList.appendChild(createBeliefEditRow(belief, index));
+        return;
+      }
+
       refs.beliefList.appendChild(createVaultTextRow({
         title: belief.text,
         meta: belief.why,
         action: "delete-belief",
+        editAction: "edit-belief",
         id: belief.id,
         index
       }));
@@ -5407,6 +5482,54 @@
     });
   }
 
+  function createBeliefEditRow(belief, index) {
+    const item = document.createElement("li");
+    item.className = "vault-row vault-row-editing";
+    item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+
+    const form = document.createElement("form");
+    form.className = "vault-edit-form";
+    form.dataset.id = belief.id;
+
+    const textInput = document.createElement("input");
+    textInput.name = "beliefText";
+    textInput.type = "text";
+    textInput.autocomplete = "off";
+    textInput.placeholder = "Belief / core value";
+    textInput.value = belief.text;
+
+    const whyInput = document.createElement("input");
+    whyInput.name = "beliefWhy";
+    whyInput.type = "text";
+    whyInput.autocomplete = "off";
+    whyInput.placeholder = "Why it matters";
+    whyInput.value = belief.why;
+
+    const actions = document.createElement("span");
+    actions.className = "vault-edit-actions";
+
+    const save = document.createElement("button");
+    save.className = "icon-control";
+    save.type = "submit";
+    save.dataset.tooltip = "Save";
+    save.setAttribute("aria-label", "Save belief");
+    save.appendChild(createControlIcon("check"));
+
+    const cancel = document.createElement("button");
+    cancel.className = "icon-control";
+    cancel.type = "button";
+    cancel.dataset.id = belief.id;
+    cancel.dataset.learnAction = "cancel-edit-belief";
+    cancel.dataset.tooltip = "Cancel";
+    cancel.setAttribute("aria-label", "Cancel edit");
+    cancel.appendChild(createControlIcon("x"));
+
+    actions.append(save, cancel);
+    form.append(textInput, whyInput, actions);
+    item.appendChild(form);
+    return item;
+  }
+
   function createVaultMetricRow({ title, meta, value, scale, action, id, index, isMuted = false }) {
     const item = createVaultTextRow({ title, meta, action, id, index });
     item.classList.toggle("is-muted-track", isMuted);
@@ -5426,13 +5549,21 @@
     return item;
   }
 
-  function createVaultTextRow({ title, meta, action, id, index }) {
+  function createVaultTextRow({ title, meta, action, editAction = "", id, index }) {
     const item = document.createElement("li");
     item.className = "vault-row";
     item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
 
     const main = document.createElement("span");
     main.className = "vault-row-main";
+    if (editAction) {
+      main.classList.add("is-editable");
+      main.dataset.id = id;
+      main.dataset.learnAction = editAction;
+      main.setAttribute("role", "button");
+      main.tabIndex = 0;
+      main.setAttribute("aria-label", `Edit ${title}`);
+    }
 
     const titleNode = document.createElement("span");
     titleNode.className = "vault-row-title";
@@ -5444,6 +5575,20 @@
       metaNode.className = "vault-row-meta";
       metaNode.textContent = meta;
       main.appendChild(metaNode);
+    }
+
+    if (editAction) {
+      const edit = document.createElement("button");
+      edit.className = "icon-control vault-row-edit";
+      edit.type = "button";
+      edit.dataset.id = id;
+      edit.dataset.learnAction = editAction;
+      edit.dataset.tooltip = "Edit";
+      edit.setAttribute("aria-label", `Edit ${title}`);
+      edit.appendChild(createControlIcon("pencil"));
+      item.append(main, edit);
+    } else {
+      item.appendChild(main);
     }
 
     const remove = document.createElement("button");
@@ -5458,7 +5603,7 @@
     }
     remove.appendChild(createControlIcon("trash"));
 
-    item.append(main, remove);
+    item.appendChild(remove);
     return item;
   }
 
@@ -5907,9 +6052,11 @@
       check: ["m5 12 4 4 10-10"],
       list: ["M8 6h12", "M8 12h12", "M8 18h12", "M4 6h.01", "M4 12h.01", "M4 18h.01"],
       mindmap: ["M12 5v5", "M7 15h10", "M7 15v4", "M17 15v4", "M12 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4", "M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4", "M17 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4"],
+      pencil: ["M12 20h9", "M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"],
       step: ["M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16"],
       task: ["M5 5h14v14H5z", "m8 9 2 2 4-4"],
-      trash: ["M4 7h16", "M10 11v6", "M14 11v6", "M6 7l1 13h10l1-13", "M9 7V5h6v2"]
+      trash: ["M4 7h16", "M10 11v6", "M14 11v6", "M6 7l1 13h10l1-13", "M9 7V5h6v2"],
+      x: ["M6 6l12 12", "M18 6 6 18"]
     };
 
     (paths[name] || []).forEach((d) => {
