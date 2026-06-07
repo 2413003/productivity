@@ -297,6 +297,11 @@ summary:focus-visible {
   padding: 6px;
 }
 
+.main-menu[hidden],
+.apps-launcher-menu[hidden] {
+  display: none;
+}
+
 .main-menu button {
   min-height: 38px;
   border-radius: 6px;
