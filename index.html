@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=goal-flow-19">
+    <link rel="stylesheet" href="styles.css?v=goal-flow-21">
   </head>
   <body>
     <div class="shell">
@@ -68,6 +68,8 @@
           </button>
           <section id="mainMenu" class="main-menu" hidden aria-label="Menu">
             <button type="button" data-view-button="crm">CRM</button>
+            <button type="button" data-view-button="personal">Personal</button>
+            <button type="button" data-view-button="learn">Learn</button>
           </section>
         </div>
         <div id="appsLauncherShell" class="apps-launcher-shell">
@@ -491,6 +493,121 @@
           </div>
         </section>
 
+        <section class="screen" data-screen="personal" aria-labelledby="personal-title">
+          <div class="vault">
+            <div class="vault-head">
+              <div>
+                <p class="kicker">Personal</p>
+                <h1 id="personal-title">Personal</h1>
+              </div>
+            </div>
+
+            <nav class="vault-tabs" aria-label="Personal views">
+              <button type="button" data-personal-view="sleep">Sleep</button>
+              <button type="button" data-personal-view="food">Food</button>
+            </nav>
+
+            <section class="vault-panel" data-personal-panel="sleep" aria-label="Sleep">
+              <details class="vault-add">
+                <summary aria-label="Add sleep">
+                  <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                </summary>
+                <form class="vault-form" id="sleepForm">
+                  <input id="sleepDateInput" type="date">
+                  <input id="sleepHoursInput" type="number" min="0" max="24" step="0.25" inputmode="decimal" placeholder="Hours">
+                  <input id="sleepQualityInput" type="number" min="0" max="10" step="1" inputmode="numeric" placeholder="Quality /10">
+                  <button class="primary" type="submit">Add</button>
+                </form>
+              </details>
+              <div class="vault-summary" aria-label="Sleep summary">
+                <span><strong id="sleepAvg">0h</strong><small>Avg</small></span>
+                <span><strong id="sleepLast">0h</strong><small>Last</small></span>
+              </div>
+              <ul class="vault-list" id="sleepList"></ul>
+            </section>
+
+            <section class="vault-panel" data-personal-panel="food" aria-label="Food">
+              <details class="vault-add">
+                <summary aria-label="Add food">
+                  <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                </summary>
+                <form class="vault-form" id="foodForm">
+                  <input id="foodDateInput" type="date">
+                  <input id="foodProteinInput" type="number" min="0" step="1" inputmode="numeric" placeholder="Protein g">
+                  <label class="vault-check">
+                    <input id="foodUpfInput" type="checkbox">
+                    <span>UPF</span>
+                  </label>
+                  <input id="foodNoteInput" type="text" autocomplete="off" placeholder="Food">
+                  <button class="primary" type="submit">Add</button>
+                </form>
+              </details>
+              <div class="vault-summary" aria-label="Food summary">
+                <span><strong id="foodProteinToday">0g</strong><small>Today</small></span>
+                <span><strong id="foodProteinAvg">0g</strong><small>Avg</small></span>
+                <span><strong id="foodUpfDays">0</strong><small>UPF days</small></span>
+              </div>
+              <ul class="vault-list" id="foodList"></ul>
+            </section>
+          </div>
+        </section>
+
+        <section class="screen" data-screen="learn" aria-labelledby="learn-title">
+          <div class="vault">
+            <div class="vault-head">
+              <div>
+                <p class="kicker">Learn</p>
+                <h1 id="learn-title">Learn</h1>
+              </div>
+            </div>
+
+            <nav class="vault-tabs" aria-label="Learn views">
+              <button type="button" data-learn-view="beliefs">Beliefs</button>
+              <button type="button" data-learn-view="people">People</button>
+            </nav>
+
+            <section class="vault-panel" data-learn-panel="beliefs" aria-label="Beliefs">
+              <details class="vault-add">
+                <summary aria-label="Add belief">
+                  <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                </summary>
+                <form class="vault-form is-wide" id="beliefForm">
+                  <input id="beliefTextInput" type="text" autocomplete="off" placeholder="Belief / core value">
+                  <input id="beliefWhyInput" type="text" autocomplete="off" placeholder="Why it matters">
+                  <button class="primary" type="submit">Add</button>
+                </form>
+              </details>
+              <ul class="vault-list" id="beliefList"></ul>
+            </section>
+
+            <section class="vault-panel" data-learn-panel="people" aria-label="People to learn from">
+              <details class="vault-add">
+                <summary aria-label="Add person to learn from">
+                  <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                </summary>
+                <form class="vault-form is-wide" id="learnPersonForm">
+                  <input id="learnPersonNameInput" type="text" autocomplete="off" placeholder="Person">
+                  <input id="learnPersonLessonInput" type="text" autocomplete="off" placeholder="What to learn">
+                  <button class="primary" type="submit">Add</button>
+                </form>
+              </details>
+              <ul class="vault-list" id="learnPersonList"></ul>
+            </section>
+          </div>
+        </section>
+
         <section class="screen" data-screen="public" aria-labelledby="public-title">
           <div class="public-profile">
             <div class="rep-head">
@@ -649,6 +766,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=goal-flow-19"></script>
+    <script src="script.js?v=goal-flow-21"></script>
   </body>
 </html>

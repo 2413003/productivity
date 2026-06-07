@@ -8,6 +8,8 @@
   const DEFAULT_DAY_END_TIME = "18:00";
   const PAGE_VIEW_ORDER = ["map", "input", "choose", "focus", "reputation"];
   const CRM_VIEWS = ["people", "map", "labour", "money", "attention", "trust"];
+  const PERSONAL_VIEWS = ["sleep", "food"];
+  const LEARN_VIEWS = ["beliefs", "people"];
   const BRANCH_MOTION_MS = 190;
   const OBJECTIVE_DRAG_HOLD_MS = 420;
   const MINDMAP_NODE_WIDTH = 184;
@@ -177,7 +179,35 @@
     crmTrustTotal: document.getElementById("crmTrustTotal"),
     crmTrustProfile: document.getElementById("crmTrustProfile"),
     crmTrustCount: document.getElementById("crmTrustCount"),
-    crmTrustList: document.getElementById("crmTrustList")
+    crmTrustList: document.getElementById("crmTrustList"),
+    personalTabs: Array.from(document.querySelectorAll("[data-personal-view]")),
+    personalPanels: Array.from(document.querySelectorAll("[data-personal-panel]")),
+    sleepForm: document.getElementById("sleepForm"),
+    sleepDateInput: document.getElementById("sleepDateInput"),
+    sleepHoursInput: document.getElementById("sleepHoursInput"),
+    sleepQualityInput: document.getElementById("sleepQualityInput"),
+    sleepAvg: document.getElementById("sleepAvg"),
+    sleepLast: document.getElementById("sleepLast"),
+    sleepList: document.getElementById("sleepList"),
+    foodForm: document.getElementById("foodForm"),
+    foodDateInput: document.getElementById("foodDateInput"),
+    foodProteinInput: document.getElementById("foodProteinInput"),
+    foodUpfInput: document.getElementById("foodUpfInput"),
+    foodNoteInput: document.getElementById("foodNoteInput"),
+    foodProteinToday: document.getElementById("foodProteinToday"),
+    foodProteinAvg: document.getElementById("foodProteinAvg"),
+    foodUpfDays: document.getElementById("foodUpfDays"),
+    foodList: document.getElementById("foodList"),
+    learnTabs: Array.from(document.querySelectorAll("[data-learn-view]")),
+    learnPanels: Array.from(document.querySelectorAll("[data-learn-panel]")),
+    beliefForm: document.getElementById("beliefForm"),
+    beliefTextInput: document.getElementById("beliefTextInput"),
+    beliefWhyInput: document.getElementById("beliefWhyInput"),
+    beliefList: document.getElementById("beliefList"),
+    learnPersonForm: document.getElementById("learnPersonForm"),
+    learnPersonNameInput: document.getElementById("learnPersonNameInput"),
+    learnPersonLessonInput: document.getElementById("learnPersonLessonInput"),
+    learnPersonList: document.getElementById("learnPersonList")
   };
 
   let state = loadState();
@@ -356,6 +386,20 @@
     refs.crmPersonForm?.addEventListener("submit", addCrmPerson);
     refs.crmPeopleList?.addEventListener("click", handleCrmPersonAction);
     refs.crmTrustList?.addEventListener("input", handleCrmTrustInput);
+    refs.personalTabs.forEach((button) => {
+      button.addEventListener("click", () => setPersonalView(button.dataset.personalView));
+    });
+    refs.sleepForm?.addEventListener("submit", addSleepEntry);
+    refs.sleepList?.addEventListener("click", handlePersonalAction);
+    refs.foodForm?.addEventListener("submit", addFoodEntry);
+    refs.foodList?.addEventListener("click", handlePersonalAction);
+    refs.learnTabs.forEach((button) => {
+      button.addEventListener("click", () => setLearnView(button.dataset.learnView));
+    });
+    refs.beliefForm?.addEventListener("submit", addBelief);
+    refs.beliefList?.addEventListener("click", handleLearnAction);
+    refs.learnPersonForm?.addEventListener("submit", addLearnPerson);
+    refs.learnPersonList?.addEventListener("click", handleLearnAction);
     refs.authForm.addEventListener("submit", signIn);
     refs.passwordModeBtn?.addEventListener("click", togglePasswordAuthMode);
     refs.signUpBtn.addEventListener("click", signUp);
@@ -442,6 +486,8 @@
       tasks: normalizeTasks(saved.tasks),
       objectives: normalizeObjectives(saved.objectives),
       crm: normalizeCrm(saved.crm),
+      personal: normalizePersonal(saved.personal),
+      learn: normalizeLearn(saved.learn),
       collapsedObjectives: Array.isArray(saved.collapsedObjectives)
         ? saved.collapsedObjectives.filter((id) => typeof id === "string" && id)
         : [],
@@ -560,6 +606,87 @@
       : [];
   }
 
+  function normalizePersonal(personal = {}) {
+    const source = personal && typeof personal === "object" ? personal : {};
+    const view = PERSONAL_VIEWS.includes(source.view) ? source.view : "sleep";
+
+    return {
+      view,
+      sleep: normalizeSleepEntries(source.sleep),
+      food: normalizeFoodEntries(source.food)
+    };
+  }
+
+  function normalizeSleepEntries(entries) {
+    return Array.isArray(entries)
+      ? entries
+          .filter((entry) => entry && typeof entry === "object")
+          .map((entry) => ({
+            id: typeof entry.id === "string" && entry.id ? entry.id : makeId(),
+            date: normalizeDateValue(entry.date),
+            hours: clamp(Number(entry.hours) || 0, 0, 24),
+            quality: clamp(Number(entry.quality) || 0, 0, 10),
+            createdAt: Number(entry.createdAt) || Date.now()
+          }))
+          .filter((entry) => entry.hours > 0)
+      : [];
+  }
+
+  function normalizeFoodEntries(entries) {
+    return Array.isArray(entries)
+      ? entries
+          .filter((entry) => entry && typeof entry === "object")
+          .map((entry) => ({
+            id: typeof entry.id === "string" && entry.id ? entry.id : makeId(),
+            date: normalizeDateValue(entry.date),
+            protein: Math.max(0, Number(entry.protein) || 0),
+            upf: Boolean(entry.upf),
+            note: typeof entry.note === "string" ? entry.note.replace(/\s+/g, " ").trim() : "",
+            createdAt: Number(entry.createdAt) || Date.now()
+          }))
+          .filter((entry) => entry.protein > 0 || entry.note)
+      : [];
+  }
+
+  function normalizeLearn(learn = {}) {
+    const source = learn && typeof learn === "object" ? learn : {};
+    const view = LEARN_VIEWS.includes(source.view) ? source.view : "beliefs";
+
+    return {
+      view,
+      beliefs: normalizeBeliefs(source.beliefs),
+      people: normalizeLearnPeople(source.people)
+    };
+  }
+
+  function normalizeBeliefs(beliefs) {
+    return Array.isArray(beliefs)
+      ? beliefs
+          .filter((item) => item && typeof item.text === "string")
+          .map((item) => ({
+            id: typeof item.id === "string" && item.id ? item.id : makeId(),
+            text: item.text.replace(/\s+/g, " ").trim(),
+            why: typeof item.why === "string" ? item.why.replace(/\s+/g, " ").trim() : "",
+            createdAt: Number(item.createdAt) || Date.now()
+          }))
+          .filter((item) => item.text)
+      : [];
+  }
+
+  function normalizeLearnPeople(people) {
+    return Array.isArray(people)
+      ? people
+          .filter((person) => person && typeof person.name === "string")
+          .map((person) => ({
+            id: typeof person.id === "string" && person.id ? person.id : makeId(),
+            name: person.name.replace(/\s+/g, " ").trim(),
+            lesson: typeof person.lesson === "string" ? person.lesson.replace(/\s+/g, " ").trim() : "",
+            createdAt: Number(person.createdAt) || Date.now()
+          }))
+          .filter((person) => person.name)
+      : [];
+  }
+
   function objectiveCreatesCycle(node, nodes) {
     const byId = new Map(nodes.map((item) => [item.id, item]));
     const seen = new Set([node.id]);
@@ -593,6 +720,8 @@
       comparisons: [],
       pairHistory: [],
       crm: normalizeCrm(),
+      personal: normalizePersonal(),
+      learn: normalizeLearn(),
       reputation: {
         profileId: makeId(),
         profile: normalizeProfile(),
@@ -830,7 +959,7 @@
   }
 
   function isAccountDataView(view) {
-    return ["map", "input", "choose", "focus", "reputation", "crm"].includes(view);
+    return ["map", "input", "choose", "focus", "reputation", "crm", "personal", "learn"].includes(view);
   }
 
   function initialView() {
@@ -1828,6 +1957,8 @@
       tasks: mergeTaskLists(primary?.tasks || [], secondary?.tasks || []),
       objectives: mergeObjectiveMaps(primary?.objectives || [], secondary?.objectives || []),
       crm: mergeCrm(primary?.crm, secondary?.crm),
+      personal: mergePersonal(primary?.personal, secondary?.personal),
+      learn: mergeLearn(primary?.learn, secondary?.learn),
       reputation: {
         profileId: primary?.reputation?.profileId || secondary?.reputation?.profileId || makeId(),
         profile: mergeProfiles(secondary?.reputation?.profile, primary?.reputation?.profile),
@@ -1837,6 +1968,28 @@
     };
 
     return result.tasks.length || !primary?.tasks?.length ? result : primary;
+  }
+
+  function mergePersonal(primaryPersonal, secondaryPersonal) {
+    const primary = normalizePersonal(primaryPersonal);
+    const secondary = normalizePersonal(secondaryPersonal);
+
+    return {
+      view: primary.view || secondary.view || "sleep",
+      sleep: mergeById(primary.sleep, secondary.sleep),
+      food: mergeById(primary.food, secondary.food)
+    };
+  }
+
+  function mergeLearn(primaryLearn, secondaryLearn) {
+    const primary = normalizeLearn(primaryLearn);
+    const secondary = normalizeLearn(secondaryLearn);
+
+    return {
+      view: primary.view || secondary.view || "beliefs",
+      beliefs: mergeById(primary.beliefs, secondary.beliefs),
+      people: mergeById(primary.people, secondary.people)
+    };
   }
 
   function mergeCrm(primaryCrm, secondaryCrm) {
@@ -2222,6 +2375,8 @@
     renderFocus();
     renderReputation();
     renderCrm();
+    renderPersonal();
+    renderLearn();
     renderPublic();
     renderAccount();
   }
@@ -4932,6 +5087,425 @@
       notation: Number(value) >= 10000 ? "compact" : "standard",
       maximumFractionDigits: 1
     }).format(Number(value) || 0);
+  }
+
+  function renderPersonal() {
+    if (!refs.sleepList || !refs.foodList) {
+      return;
+    }
+
+    state.personal = normalizePersonal(state.personal);
+    const personal = state.personal;
+
+    refs.personalTabs.forEach((button) => {
+      const isActive = button.dataset.personalView === personal.view;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-current", isActive ? "page" : "false");
+    });
+
+    refs.personalPanels.forEach((panel) => {
+      panel.classList.toggle("is-active", panel.dataset.personalPanel === personal.view);
+    });
+
+    if (document.activeElement !== refs.sleepDateInput && !refs.sleepDateInput.value) {
+      refs.sleepDateInput.value = localDateValue();
+    }
+    if (document.activeElement !== refs.foodDateInput && !refs.foodDateInput.value) {
+      refs.foodDateInput.value = localDateValue();
+    }
+
+    renderSleep();
+    renderFood();
+  }
+
+  function setPersonalView(view) {
+    if (!PERSONAL_VIEWS.includes(view)) {
+      return;
+    }
+
+    state.personal = normalizePersonal(state.personal);
+    state.personal.view = view;
+    saveState();
+    renderPersonal();
+  }
+
+  function addSleepEntry(event) {
+    event.preventDefault();
+    state.personal = normalizePersonal(state.personal);
+    const hours = clamp(Number(refs.sleepHoursInput.value) || 0, 0, 24);
+
+    if (!hours) {
+      refs.sleepHoursInput.focus();
+      return;
+    }
+
+    state.personal.sleep.push({
+      id: makeId(),
+      date: normalizeDateValue(refs.sleepDateInput.value),
+      hours,
+      quality: clamp(Number(refs.sleepQualityInput.value) || 0, 0, 10),
+      createdAt: Date.now()
+    });
+
+    refs.sleepForm.reset();
+    refs.sleepDateInput.value = localDateValue();
+    refs.sleepForm.closest("details")?.removeAttribute("open");
+    saveState({ immediate: true });
+    renderPersonal();
+  }
+
+  function addFoodEntry(event) {
+    event.preventDefault();
+    state.personal = normalizePersonal(state.personal);
+    const protein = Math.max(0, Number(refs.foodProteinInput.value) || 0);
+    const note = refs.foodNoteInput.value.replace(/\s+/g, " ").trim();
+
+    if (!protein && !note) {
+      refs.foodProteinInput.focus();
+      return;
+    }
+
+    state.personal.food.push({
+      id: makeId(),
+      date: normalizeDateValue(refs.foodDateInput.value),
+      protein,
+      upf: refs.foodUpfInput.checked,
+      note,
+      createdAt: Date.now()
+    });
+
+    refs.foodForm.reset();
+    refs.foodDateInput.value = localDateValue();
+    refs.foodForm.closest("details")?.removeAttribute("open");
+    saveState({ immediate: true });
+    renderPersonal();
+  }
+
+  function handlePersonalAction(event) {
+    const button = event.target.closest("[data-personal-action]");
+    if (!button) {
+      return;
+    }
+
+    state.personal = normalizePersonal(state.personal);
+    const id = button.dataset.id;
+
+    if (button.dataset.personalAction === "delete-sleep") {
+      state.personal.sleep = state.personal.sleep.filter((entry) => entry.id !== id);
+    } else if (button.dataset.personalAction === "delete-food") {
+      state.personal.food = state.personal.food.filter((entry) => entry.id !== id);
+    }
+
+    saveState({ immediate: true });
+    renderPersonal();
+  }
+
+  function renderSleep() {
+    const entries = [...state.personal.sleep].sort(compareEntriesByDate);
+    refs.sleepList.innerHTML = "";
+    const recent = entries.slice(0, 7);
+    const averageHours = recent.length ? recent.reduce((sum, entry) => sum + entry.hours, 0) / recent.length : 0;
+    refs.sleepAvg.textContent = formatSleepHours(averageHours);
+    refs.sleepLast.textContent = entries.length ? formatSleepHours(entries[0].hours) : "0h";
+
+    if (!entries.length) {
+      refs.sleepList.appendChild(createVaultEmpty("Add sleep"));
+      return;
+    }
+
+    const max = Math.max(8, ...entries.map((entry) => entry.hours));
+    entries.forEach((entry, index) => {
+      const item = createVaultMetricRow({
+        title: formatEntryDate(entry.date),
+        meta: entry.quality ? `Quality ${entry.quality}/10` : "",
+        value: formatSleepHours(entry.hours),
+        scale: clamp(entry.hours / max, 0.04, 1),
+        action: "delete-sleep",
+        id: entry.id,
+        index
+      });
+      refs.sleepList.appendChild(item);
+    });
+  }
+
+  function renderFood() {
+    const entries = [...state.personal.food].sort(compareEntriesByDate);
+    refs.foodList.innerHTML = "";
+    const today = localDateValue();
+    const todayProtein = entries
+      .filter((entry) => entry.date === today)
+      .reduce((sum, entry) => sum + entry.protein, 0);
+    const recentDates = recentUniqueDates(entries, 7);
+    const recentProtein = recentDates.map((date) =>
+      entries.filter((entry) => entry.date === date).reduce((sum, entry) => sum + entry.protein, 0)
+    );
+    const proteinAverage = recentProtein.length
+      ? recentProtein.reduce((sum, value) => sum + value, 0) / recentProtein.length
+      : 0;
+    const upfDays = recentDates.filter((date) => entries.some((entry) => entry.date === date && entry.upf)).length;
+
+    refs.foodProteinToday.textContent = formatProtein(todayProtein);
+    refs.foodProteinAvg.textContent = formatProtein(proteinAverage);
+    refs.foodUpfDays.textContent = String(upfDays);
+
+    if (!entries.length) {
+      refs.foodList.appendChild(createVaultEmpty("Add food"));
+      return;
+    }
+
+    const max = Math.max(100, ...entries.map((entry) => entry.protein));
+    entries.forEach((entry, index) => {
+      const item = createVaultMetricRow({
+        title: entry.note || formatEntryDate(entry.date),
+        meta: `${formatEntryDate(entry.date)}${entry.upf ? " · UPF" : ""}`,
+        value: formatProtein(entry.protein),
+        scale: clamp(entry.protein / max, 0.04, 1),
+        action: "delete-food",
+        id: entry.id,
+        index,
+        isMuted: entry.upf
+      });
+      refs.foodList.appendChild(item);
+    });
+  }
+
+  function renderLearn() {
+    if (!refs.beliefList || !refs.learnPersonList) {
+      return;
+    }
+
+    state.learn = normalizeLearn(state.learn);
+    const learn = state.learn;
+
+    refs.learnTabs.forEach((button) => {
+      const isActive = button.dataset.learnView === learn.view;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-current", isActive ? "page" : "false");
+    });
+
+    refs.learnPanels.forEach((panel) => {
+      panel.classList.toggle("is-active", panel.dataset.learnPanel === learn.view);
+    });
+
+    renderBeliefs();
+    renderLearnPeople();
+  }
+
+  function setLearnView(view) {
+    if (!LEARN_VIEWS.includes(view)) {
+      return;
+    }
+
+    state.learn = normalizeLearn(state.learn);
+    state.learn.view = view;
+    saveState();
+    renderLearn();
+  }
+
+  function addBelief(event) {
+    event.preventDefault();
+    state.learn = normalizeLearn(state.learn);
+    const text = refs.beliefTextInput.value.replace(/\s+/g, " ").trim();
+
+    if (!text) {
+      refs.beliefTextInput.focus();
+      return;
+    }
+
+    state.learn.beliefs.push({
+      id: makeId(),
+      text,
+      why: refs.beliefWhyInput.value.replace(/\s+/g, " ").trim(),
+      createdAt: Date.now()
+    });
+
+    refs.beliefForm.reset();
+    refs.beliefForm.closest("details")?.removeAttribute("open");
+    saveState({ immediate: true });
+    renderLearn();
+  }
+
+  function addLearnPerson(event) {
+    event.preventDefault();
+    state.learn = normalizeLearn(state.learn);
+    const name = refs.learnPersonNameInput.value.replace(/\s+/g, " ").trim();
+
+    if (!name) {
+      refs.learnPersonNameInput.focus();
+      return;
+    }
+
+    state.learn.people.push({
+      id: makeId(),
+      name,
+      lesson: refs.learnPersonLessonInput.value.replace(/\s+/g, " ").trim(),
+      createdAt: Date.now()
+    });
+
+    refs.learnPersonForm.reset();
+    refs.learnPersonForm.closest("details")?.removeAttribute("open");
+    saveState({ immediate: true });
+    renderLearn();
+  }
+
+  function handleLearnAction(event) {
+    const button = event.target.closest("[data-learn-action]");
+    if (!button) {
+      return;
+    }
+
+    state.learn = normalizeLearn(state.learn);
+    const id = button.dataset.id;
+
+    if (button.dataset.learnAction === "delete-belief") {
+      state.learn.beliefs = state.learn.beliefs.filter((item) => item.id !== id);
+    } else if (button.dataset.learnAction === "delete-person") {
+      state.learn.people = state.learn.people.filter((item) => item.id !== id);
+    }
+
+    saveState({ immediate: true });
+    renderLearn();
+  }
+
+  function renderBeliefs() {
+    refs.beliefList.innerHTML = "";
+    const beliefs = [...state.learn.beliefs].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    if (!beliefs.length) {
+      refs.beliefList.appendChild(createVaultEmpty("Add a belief"));
+      return;
+    }
+
+    beliefs.forEach((belief, index) => {
+      refs.beliefList.appendChild(createVaultTextRow({
+        title: belief.text,
+        meta: belief.why,
+        action: "delete-belief",
+        id: belief.id,
+        index
+      }));
+    });
+  }
+
+  function renderLearnPeople() {
+    refs.learnPersonList.innerHTML = "";
+    const people = [...state.learn.people].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    if (!people.length) {
+      refs.learnPersonList.appendChild(createVaultEmpty("Add a person"));
+      return;
+    }
+
+    people.forEach((person, index) => {
+      refs.learnPersonList.appendChild(createVaultTextRow({
+        title: person.name,
+        meta: person.lesson,
+        action: "delete-person",
+        id: person.id,
+        index
+      }));
+    });
+  }
+
+  function createVaultMetricRow({ title, meta, value, scale, action, id, index, isMuted = false }) {
+    const item = createVaultTextRow({ title, meta, action, id, index });
+    item.classList.toggle("is-muted-track", isMuted);
+
+    const valueNode = document.createElement("output");
+    valueNode.className = "vault-row-value";
+    valueNode.textContent = value;
+
+    const track = document.createElement("span");
+    track.className = "vault-track";
+    const fill = document.createElement("span");
+    fill.style.transform = `scaleX(${scale})`;
+    track.appendChild(fill);
+
+    item.insertBefore(valueNode, item.querySelector(".vault-row-delete"));
+    item.appendChild(track);
+    return item;
+  }
+
+  function createVaultTextRow({ title, meta, action, id, index }) {
+    const item = document.createElement("li");
+    item.className = "vault-row";
+    item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+
+    const main = document.createElement("span");
+    main.className = "vault-row-main";
+
+    const titleNode = document.createElement("span");
+    titleNode.className = "vault-row-title";
+    titleNode.textContent = title;
+    main.appendChild(titleNode);
+
+    if (meta) {
+      const metaNode = document.createElement("span");
+      metaNode.className = "vault-row-meta";
+      metaNode.textContent = meta;
+      main.appendChild(metaNode);
+    }
+
+    const remove = document.createElement("button");
+    remove.className = "icon-control vault-row-delete";
+    remove.type = "button";
+    remove.dataset.id = id;
+    remove.dataset.tooltip = "Delete";
+    remove.setAttribute("aria-label", `Delete ${title}`);
+    if (action.startsWith("delete-")) {
+      remove.dataset.personalAction = action;
+      remove.dataset.learnAction = action;
+    }
+    remove.appendChild(createControlIcon("trash"));
+
+    item.append(main, remove);
+    return item;
+  }
+
+  function createVaultEmpty(text) {
+    const empty = document.createElement("li");
+    empty.className = "empty vault-empty";
+    empty.textContent = text;
+    return empty;
+  }
+
+  function compareEntriesByDate(a, b) {
+    return String(b.date).localeCompare(String(a.date)) || (b.createdAt || 0) - (a.createdAt || 0);
+  }
+
+  function recentUniqueDates(entries, limit) {
+    const dates = [];
+    entries.forEach((entry) => {
+      if (!dates.includes(entry.date)) {
+        dates.push(entry.date);
+      }
+    });
+    return dates.slice(0, limit);
+  }
+
+  function normalizeDateValue(value) {
+    return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : localDateValue();
+  }
+
+  function localDateValue(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function formatEntryDate(value) {
+    return formatDate(`${normalizeDateValue(value)}T00:00:00`);
+  }
+
+  function formatSleepHours(value) {
+    const number = Number(value) || 0;
+    return `${Number.isInteger(number) ? number : number.toFixed(1)}h`;
+  }
+
+  function formatProtein(value) {
+    const number = Math.round(Number(value) || 0);
+    return `${number}g`;
   }
 
   function renderReputation() {
