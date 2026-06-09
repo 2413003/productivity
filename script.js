@@ -225,6 +225,7 @@
     beliefList: document.getElementById("beliefList"),
     learnPersonForm: document.getElementById("learnPersonForm"),
     learnPersonNameInput: document.getElementById("learnPersonNameInput"),
+    learnPersonCategoryInput: document.getElementById("learnPersonCategoryInput"),
     learnPersonLessonInput: document.getElementById("learnPersonLessonInput"),
     learnPersonList: document.getElementById("learnPersonList")
   };
@@ -751,6 +752,7 @@
           .map((person) => ({
             id: typeof person.id === "string" && person.id ? person.id : makeId(),
             name: person.name.replace(/\s+/g, " ").trim(),
+            category: typeof person.category === "string" ? person.category.replace(/\s+/g, " ").trim() : "",
             lesson: typeof person.lesson === "string" ? person.lesson.replace(/\s+/g, " ").trim() : "",
             createdAt: Number(person.createdAt) || Date.now()
           }))
@@ -6028,6 +6030,7 @@
     state.learn.people.push({
       id: makeId(),
       name,
+      category: refs.learnPersonCategoryInput?.value.replace(/\s+/g, " ").trim() || "",
       lesson: refs.learnPersonLessonInput.value.replace(/\s+/g, " ").trim(),
       createdAt: Date.now()
     });
@@ -6158,15 +6161,47 @@
       return;
     }
 
-    people.forEach((person, index) => {
-      refs.learnPersonList.appendChild(createVaultTextRow({
-        title: person.name,
-        meta: person.lesson,
-        action: "delete-person",
-        id: person.id,
-        index
-      }));
+    learnPeopleGroups(people).forEach((group, groupIndex) => {
+      refs.learnPersonList.appendChild(createVaultGroupHeader(group.label, groupIndex));
+      group.people.forEach((person, index) => {
+        refs.learnPersonList.appendChild(createVaultTextRow({
+          title: person.name,
+          meta: person.lesson,
+          action: "delete-person",
+          id: person.id,
+          index: groupIndex + index
+        }));
+      });
     });
+  }
+
+  function learnPeopleGroups(people) {
+    const groups = new Map();
+    people.forEach((person) => {
+      const label = person.category || "General";
+      const key = label.toLowerCase();
+      if (!groups.has(key)) {
+        groups.set(key, { label, people: [], latest: 0 });
+      }
+
+      const group = groups.get(key);
+      group.people.push(person);
+      group.latest = Math.max(group.latest, person.createdAt || 0);
+    });
+
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.label === "General") return 1;
+      if (b.label === "General") return -1;
+      return b.latest - a.latest || a.label.localeCompare(b.label);
+    });
+  }
+
+  function createVaultGroupHeader(label, index) {
+    const item = document.createElement("li");
+    item.className = "vault-group-heading";
+    item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+    item.textContent = label;
+    return item;
   }
 
   function createBeliefEditRow(belief, index) {

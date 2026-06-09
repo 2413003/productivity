@@ -3000,6 +3000,20 @@ h2 {
   list-style: none;
 }
 
+.vault-group-heading {
+  margin-top: 18px;
+  padding: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.2;
+  animation: rowIn 240ms ease both;
+}
+
+.vault-group-heading:first-child {
+  margin-top: 2px;
+}
+
 .vault-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
