@@ -729,7 +729,8 @@ summary:focus-visible {
 
 .map-add-trigger,
 .map-view-trigger,
-.map-bottleneck-trigger {
+.map-bottleneck-trigger,
+.map-weight-trigger {
   position: relative;
   width: 42px;
   min-width: 42px;
@@ -747,7 +748,8 @@ summary:focus-visible {
 
 .map.is-mindmap-view .map-add-trigger,
 .map.is-mindmap-view .map-view-trigger,
-.map.is-mindmap-view .map-bottleneck-trigger {
+.map.is-mindmap-view .map-bottleneck-trigger,
+.map.is-mindmap-view .map-weight-trigger {
   width: 36px;
   min-width: 36px;
   height: 36px;
@@ -772,8 +774,10 @@ summary:focus-visible {
 .map-add-trigger:hover,
 .map-view-trigger:hover,
 .map-bottleneck-trigger:hover,
+.map-weight-trigger:hover,
 .map-view-trigger[aria-pressed="true"],
-.map-bottleneck-trigger[aria-pressed="true"] {
+.map-bottleneck-trigger[aria-pressed="true"],
+.map-weight-trigger[aria-pressed="true"] {
   background: var(--panel);
   color: var(--ink);
   transform: translateY(-1px);
@@ -782,6 +786,7 @@ summary:focus-visible {
 .map-add-trigger::after,
 .map-view-trigger::after,
 .map-bottleneck-trigger::after,
+.map-weight-trigger::after,
 .objective-action[data-tooltip]::after {
   content: attr(data-tooltip);
   position: absolute;
@@ -808,6 +813,8 @@ summary:focus-visible {
 .map-view-trigger:focus-visible::after,
 .map-bottleneck-trigger:hover::after,
 .map-bottleneck-trigger:focus-visible::after,
+.map-weight-trigger:hover::after,
+.map-weight-trigger:focus-visible::after,
 .objective-action[data-tooltip]:hover::after,
 .objective-action[data-tooltip]:focus-visible::after {
   opacity: 1;
@@ -816,7 +823,8 @@ summary:focus-visible {
 
 .map-add-trigger::after,
 .map-view-trigger::after,
-.map-bottleneck-trigger::after {
+.map-bottleneck-trigger::after,
+.map-weight-trigger::after {
   top: auto;
   bottom: calc(100% + 8px);
   transform: translate(-50%, 3px);
@@ -1032,6 +1040,52 @@ body.is-mindmap-panning .mindmap-canvas {
   line-height: 1.2;
 }
 
+.mindmap-canvas.is-weight-mode .mindmap-node.is-weighted {
+  width: var(--mindmap-bubble-size, 176px);
+  min-height: var(--mindmap-bubble-size, 176px);
+  aspect-ratio: 1 / 1;
+  justify-items: center;
+  align-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--line));
+  padding: var(--mindmap-bubble-pad, 18px);
+  text-align: center;
+  box-shadow: 0 12px 30px rgba(21, 23, 19, 0.08);
+}
+
+.mindmap-canvas.is-weight-mode .mindmap-node.is-weighted .mindmap-title {
+  max-width: 88%;
+  font-size: var(--mindmap-weight-title, 1.08rem);
+  line-height: 1.16;
+  text-align: center;
+}
+
+.mindmap-canvas.is-weight-mode .mindmap-node.is-weighted.has-image {
+  grid-template-columns: 1fr;
+}
+
+.mindmap-canvas.is-weight-mode .mindmap-node.is-weighted .mindmap-image-thumb {
+  grid-row: auto;
+  width: 34px;
+  height: 34px;
+}
+
+.mindmap-canvas.is-weight-mode .mindmap-node.is-weighted .mindmap-meta {
+  justify-self: center;
+}
+
+.mindmap-weight {
+  width: max-content;
+  border-radius: 999px;
+  background: rgba(21, 23, 19, 0.06);
+  color: var(--muted);
+  padding: 2px 6px;
+  font-size: 0.7rem;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
 .objective-list .objective-list {
   margin-left: 22px;
   padding-left: 18px;
@@ -1074,6 +1128,19 @@ body.is-mindmap-panning .mindmap-canvas {
 
 .objective-item {
   position: relative;
+}
+
+.objective-item.is-menu-open,
+.objective-item:has(.objective-item.is-menu-open),
+.objective-branch:has(.objective-item.is-menu-open) {
+  z-index: 80;
+}
+
+.objective-item.is-menu-open > .objective-node,
+.objective-item.is-menu-open > .objective-node > .objective-branch-actions,
+.objective-item.is-menu-open .objective-more-wrap,
+.objective-item.is-menu-open .objective-more-menu {
+  z-index: 90;
 }
 
 .objective-list .objective-list .objective-item::before {
@@ -1211,6 +1278,48 @@ body.is-mindmap-panning .mindmap-canvas {
   color: var(--accent);
 }
 
+.objective-list.is-weight-mode .objective-branch-actions {
+  display: none !important;
+}
+
+.objective-list.is-weight-mode .objective-item.is-weighted > .objective-node {
+  margin: 7px 0;
+}
+
+.objective-list.is-weight-mode .objective-item.is-weighted > .objective-node .objective-pick {
+  padding: var(--objective-list-pad-y, 8px) var(--objective-list-pad-x, 10px);
+  background: color-mix(in srgb, var(--accent) 7%, white);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 10%, var(--line));
+}
+
+.objective-list.is-weight-mode .objective-item.is-weighted > .objective-node .objective-title {
+  font-size: var(--objective-list-font, 1.12rem);
+}
+
+.objective-weight-control {
+  grid-column: 2;
+  width: min(230px, 58vw);
+  display: grid;
+  grid-template-columns: 38px minmax(84px, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 6px 8px;
+}
+
+.objective-weight-output {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.objective-weight-control input {
+  width: 100%;
+  min-height: 28px;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 .objective-main {
   min-width: 0;
   display: grid;
@@ -1308,7 +1417,8 @@ body.is-objective-dragging .objective-pick {
 }
 
 .objective-item.is-drop-before > .objective-node::before,
-.objective-item.is-drop-after > .objective-node::after {
+.objective-item.is-drop-after > .objective-node::after,
+.objective-item.is-drop-inside-start > .objective-node::after {
   content: "";
   position: absolute;
   left: 30px;
@@ -1329,10 +1439,22 @@ body.is-objective-dragging .objective-pick {
   bottom: -3px;
 }
 
+.objective-item.is-drop-inside-start > .objective-node::after {
+  left: 54px;
+  bottom: -7px;
+  background: var(--accent);
+  opacity: 0.72;
+}
+
 .objective-item.is-drop-inside > .objective-node .objective-pick {
   background: var(--accent-soft);
   color: var(--accent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.objective-item.is-drop-inside-start > .objective-node .objective-pick {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .objective-drag-preview {
@@ -2531,7 +2653,8 @@ h2 {
 }
 
 .crm-form input,
-.vault-form input {
+.vault-form input,
+.vault-form select {
   min-width: 0;
   min-height: 44px;
   border: 1px solid var(--line);
@@ -2539,6 +2662,14 @@ h2 {
   background: var(--panel);
   color: var(--ink);
   padding: 0 10px;
+}
+
+.vault-form select {
+  appearance: none;
+}
+
+.finance-form {
+  grid-template-columns: minmax(96px, 0.6fr) minmax(130px, 1fr) repeat(3, minmax(96px, 0.7fr)) auto;
 }
 
 .vault-check {
@@ -2974,6 +3105,73 @@ h2 {
 
 .vault-empty {
   min-height: 180px;
+}
+
+.finance-hero {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding: clamp(18px, 4vw, 28px) 0;
+}
+
+.finance-hero output {
+  color: var(--ink);
+  font-size: clamp(2.5rem, 10vw, 5.6rem);
+  font-weight: 760;
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+.finance-hero span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.finance-bars {
+  margin-top: 2px;
+}
+
+.finance-bar .vault-row-title,
+.finance-account-row .vault-row-title {
+  font-weight: 520;
+}
+
+.finance-bar.is-spend .vault-track span {
+  background: var(--muted);
+}
+
+.finance-connect-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.finance-connect-grid button {
+  min-height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.finance-connect-grid button:hover,
+.finance-connect-grid button:focus-visible {
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 24px rgba(21, 23, 19, 0.08);
+}
+
+.finance-connect-note {
+  display: block;
+  min-height: 20px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 650;
 }
 
 .auth-form {
@@ -3436,6 +3634,7 @@ h2 {
   .objective-rename-form,
   .crm-form,
   .vault-form,
+  .finance-form,
   .vault-form.is-wide,
   .vault-edit-form {
     grid-template-columns: minmax(0, 1fr);

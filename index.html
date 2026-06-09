@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=goal-flow-23">
+    <link rel="stylesheet" href="styles.css?v=goal-flow-30">
   </head>
   <body>
     <div class="shell">
@@ -68,6 +68,7 @@
           </button>
           <section id="mainMenu" class="main-menu" hidden aria-label="Menu">
             <button type="button" data-view-button="crm">CRM</button>
+            <button type="button" data-view-button="financial">Financial</button>
             <button type="button" data-view-button="personal">Personal</button>
             <button type="button" data-view-button="learn">Learn</button>
           </section>
@@ -193,6 +194,14 @@
                   <path d="M12 18v3" />
                   <path d="M3 12h3" />
                   <path d="M18 12h3" />
+                </svg>
+              </button>
+              <button class="map-weight-trigger icon-add" type="button" id="objectiveWeightToggle" aria-label="Show priority weight" data-tooltip="Weight">
+                <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M4 19h16" />
+                  <path d="M7 16V9" />
+                  <path d="M12 16V5" />
+                  <path d="M17 16v-4" />
                 </svg>
               </button>
             </div>
@@ -493,6 +502,67 @@
           </div>
         </section>
 
+        <section class="screen" data-screen="financial" aria-labelledby="financial-title">
+          <div class="vault financial">
+            <div class="vault-head">
+              <div>
+                <h1 id="financial-title">Financial</h1>
+              </div>
+            </div>
+
+            <nav class="vault-tabs" aria-label="Financial views">
+              <button type="button" data-financial-view="overview">Overview</button>
+              <button type="button" data-financial-view="accounts">Accounts</button>
+              <button type="button" data-financial-view="connect">Connect</button>
+            </nav>
+
+            <section class="vault-panel" data-financial-panel="overview" aria-label="Overview">
+              <div class="finance-hero">
+                <output id="financialBalanceTotal">£0</output>
+                <span id="financialProfitTotal">£0</span>
+              </div>
+              <div class="vault-summary" aria-label="Financial summary">
+                <span><strong id="financialIncomeTotal">£0</strong><small>In</small></span>
+                <span><strong id="financialSpendTotal">£0</strong><small>Out</small></span>
+                <span><strong id="financialAccountTotal">0</strong><small>Accounts</small></span>
+              </div>
+              <ul class="vault-list finance-bars" id="financialOverviewList"></ul>
+            </section>
+
+            <section class="vault-panel" data-financial-panel="accounts" aria-label="Accounts">
+              <details class="vault-add">
+                <summary aria-label="Add financial account">
+                  <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                </summary>
+                <form class="vault-form finance-form" id="financialAccountForm">
+                  <select id="financialTypeInput" aria-label="Type">
+                    <option value="bank">Bank</option>
+                    <option value="stripe">Stripe</option>
+                    <option value="cash">Cash</option>
+                  </select>
+                  <input id="financialSourceInput" type="text" autocomplete="off" placeholder="Name">
+                  <input id="financialBalanceInput" type="number" step="0.01" inputmode="decimal" placeholder="Balance">
+                  <input id="financialIncomeInput" type="number" min="0" step="0.01" inputmode="decimal" placeholder="In">
+                  <input id="financialSpendInput" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Out">
+                  <button class="primary" type="submit">Add</button>
+                </form>
+              </details>
+              <ul class="vault-list" id="financialAccountList"></ul>
+            </section>
+
+            <section class="vault-panel" data-financial-panel="connect" aria-label="Connect">
+              <div class="finance-connect-grid">
+                <button type="button" data-financial-connect="stripe">Stripe</button>
+                <button type="button" data-financial-connect="bank">Bank</button>
+              </div>
+              <output class="finance-connect-note" id="financialConnectNote" aria-live="polite"></output>
+            </section>
+          </div>
+        </section>
+
         <section class="screen" data-screen="personal" aria-labelledby="personal-title">
           <div class="vault">
             <div class="vault-head">
@@ -764,6 +834,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=goal-flow-23"></script>
+    <script src="script.js?v=goal-flow-30"></script>
   </body>
 </html>

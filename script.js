@@ -8,6 +8,7 @@
   const DEFAULT_DAY_END_TIME = "18:00";
   const PAGE_VIEW_ORDER = ["map", "input", "choose", "focus", "reputation"];
   const CRM_VIEWS = ["people", "map", "labour", "money", "attention", "trust"];
+  const FINANCIAL_VIEWS = ["overview", "accounts", "connect"];
   const PERSONAL_VIEWS = ["sleep", "food"];
   const LEARN_VIEWS = ["beliefs", "people"];
   const BRANCH_MOTION_MS = 190;
@@ -34,6 +35,7 @@
     objectiveRootInput: document.getElementById("objectiveRootInput"),
     objectiveViewToggle: document.getElementById("objectiveViewToggle"),
     objectiveBottleneckToggle: document.getElementById("objectiveBottleneckToggle"),
+    objectiveWeightToggle: document.getElementById("objectiveWeightToggle"),
     objectiveBottleneckBar: document.getElementById("objectiveBottleneckBar"),
     objectiveBottleneckLabel: document.getElementById("objectiveBottleneckLabel"),
     cancelBottleneckBtn: document.getElementById("cancelBottleneckBtn"),
@@ -180,6 +182,23 @@
     crmTrustProfile: document.getElementById("crmTrustProfile"),
     crmTrustCount: document.getElementById("crmTrustCount"),
     crmTrustList: document.getElementById("crmTrustList"),
+    financialTabs: Array.from(document.querySelectorAll("[data-financial-view]")),
+    financialPanels: Array.from(document.querySelectorAll("[data-financial-panel]")),
+    financialAccountForm: document.getElementById("financialAccountForm"),
+    financialTypeInput: document.getElementById("financialTypeInput"),
+    financialSourceInput: document.getElementById("financialSourceInput"),
+    financialBalanceInput: document.getElementById("financialBalanceInput"),
+    financialIncomeInput: document.getElementById("financialIncomeInput"),
+    financialSpendInput: document.getElementById("financialSpendInput"),
+    financialBalanceTotal: document.getElementById("financialBalanceTotal"),
+    financialProfitTotal: document.getElementById("financialProfitTotal"),
+    financialIncomeTotal: document.getElementById("financialIncomeTotal"),
+    financialSpendTotal: document.getElementById("financialSpendTotal"),
+    financialAccountTotal: document.getElementById("financialAccountTotal"),
+    financialOverviewList: document.getElementById("financialOverviewList"),
+    financialAccountList: document.getElementById("financialAccountList"),
+    financialConnectButtons: Array.from(document.querySelectorAll("[data-financial-connect]")),
+    financialConnectNote: document.getElementById("financialConnectNote"),
     personalTabs: Array.from(document.querySelectorAll("[data-personal-view]")),
     personalPanels: Array.from(document.querySelectorAll("[data-personal-panel]")),
     sleepForm: document.getElementById("sleepForm"),
@@ -237,9 +256,11 @@
   let pendingSupportDialog = false;
   let lastSignalUrl = "";
   let objectiveDraftParentId = null;
+  let objectiveDraftText = "";
   let selectedObjectiveId = null;
   let selectedObjectiveIds = new Set();
   let objectiveBottleneckMode = false;
+  let objectiveWeightMode = false;
   let objectiveRootOpen = false;
   let objectiveMenuId = null;
   let objectiveRenameId = null;
@@ -290,6 +311,7 @@
     refs.objectiveRootToggle?.addEventListener("click", openRootObjectiveForm);
     refs.objectiveViewToggle?.addEventListener("click", toggleObjectiveView);
     refs.objectiveBottleneckToggle?.addEventListener("click", toggleObjectiveBottleneckMode);
+    refs.objectiveWeightToggle?.addEventListener("click", toggleObjectiveWeightMode);
     refs.cancelBottleneckBtn?.addEventListener("click", () => {
       objectiveBottleneckMode = false;
       renderMap();
@@ -298,6 +320,8 @@
     refs.objectiveRootForm?.addEventListener("keydown", handleObjectiveKeydown);
     refs.objectiveTree?.addEventListener("click", suppressObjectiveDragClick, true);
     refs.objectiveTree?.addEventListener("click", handleObjectiveAction);
+    refs.objectiveTree?.addEventListener("input", handleObjectiveDraftInput);
+    refs.objectiveTree?.addEventListener("input", handleObjectiveWeightInput);
     refs.objectiveTree?.addEventListener("submit", submitObjectiveChild);
     refs.objectiveTree?.addEventListener("keydown", handleObjectiveKeydown);
     refs.objectiveTree?.addEventListener("pointerdown", handleObjectivePointerDown);
@@ -387,6 +411,14 @@
     refs.crmPersonForm?.addEventListener("submit", addCrmPerson);
     refs.crmPeopleList?.addEventListener("click", handleCrmPersonAction);
     refs.crmTrustList?.addEventListener("input", handleCrmTrustInput);
+    refs.financialTabs.forEach((button) => {
+      button.addEventListener("click", () => setFinancialView(button.dataset.financialView));
+    });
+    refs.financialAccountForm?.addEventListener("submit", addFinancialAccount);
+    refs.financialAccountList?.addEventListener("click", handleFinancialAction);
+    refs.financialConnectButtons.forEach((button) => {
+      button.addEventListener("click", () => connectFinancialSource(button.dataset.financialConnect));
+    });
     refs.personalTabs.forEach((button) => {
       button.addEventListener("click", () => setPersonalView(button.dataset.personalView));
     });
@@ -489,6 +521,7 @@
       tasks: normalizeTasks(saved.tasks),
       objectives: normalizeObjectives(saved.objectives),
       crm: normalizeCrm(saved.crm),
+      financial: normalizeFinancial(saved.financial),
       personal: normalizePersonal(saved.personal),
       learn: normalizeLearn(saved.learn),
       collapsedObjectives: Array.isArray(saved.collapsedObjectives)
@@ -535,6 +568,7 @@
 
         const mapX = Number(node.mapX);
         const mapY = Number(node.mapY);
+        const weight = Number(node.weight);
         const normalized = {
           id,
           parentId: typeof node.parentId === "string" ? node.parentId : "",
@@ -544,6 +578,7 @@
           masked: Boolean(node.masked),
           imageUrl: typeof node.imageUrl === "string" ? node.imageUrl.trim() : "",
           imageUpdatedAt: Number(node.imageUpdatedAt) || 0,
+          weight: Number.isFinite(weight) ? clamp(Math.round(weight), 0, 100) : null,
           createdAt: Number(node.createdAt) || Date.now()
         };
 
@@ -606,6 +641,39 @@
             };
           })
           .filter((person) => person.name)
+      : [];
+  }
+
+  function normalizeFinancial(financial = {}) {
+    const source = financial && typeof financial === "object" ? financial : {};
+    const view = FINANCIAL_VIEWS.includes(source.view) ? source.view : "overview";
+
+    return {
+      view,
+      accounts: normalizeFinancialAccounts(source.accounts)
+    };
+  }
+
+  function normalizeFinancialAccounts(accounts) {
+    return Array.isArray(accounts)
+      ? accounts
+          .filter((account) => account && typeof account === "object")
+          .map((account) => {
+            const type = ["bank", "stripe", "cash"].includes(account.type) ? account.type : "bank";
+            const source = typeof account.source === "string" ? account.source.replace(/\s+/g, " ").trim() : "";
+            return {
+              id: typeof account.id === "string" && account.id ? account.id : makeId(),
+              type,
+              source: source || financialTypeLabel(type),
+              balance: Number(account.balance) || 0,
+              income: Math.max(0, Number(account.income) || 0),
+              spend: Math.max(0, Number(account.spend) || 0),
+              readonly: account.readonly !== false,
+              updatedAt: Number(account.updatedAt) || Date.now(),
+              createdAt: Number(account.createdAt) || Date.now()
+            };
+          })
+          .filter((account) => account.source)
       : [];
   }
 
@@ -723,6 +791,7 @@
       comparisons: [],
       pairHistory: [],
       crm: normalizeCrm(),
+      financial: normalizeFinancial(),
       personal: normalizePersonal(),
       learn: normalizeLearn(),
       reputation: {
@@ -962,7 +1031,7 @@
   }
 
   function isAccountDataView(view) {
-    return ["map", "input", "choose", "focus", "reputation", "crm", "personal", "learn"].includes(view);
+    return ["map", "input", "choose", "focus", "reputation", "crm", "financial", "personal", "learn"].includes(view);
   }
 
   function initialView() {
@@ -1960,6 +2029,7 @@
       tasks: mergeTaskLists(primary?.tasks || [], secondary?.tasks || []),
       objectives: mergeObjectiveMaps(primary?.objectives || [], secondary?.objectives || []),
       crm: mergeCrm(primary?.crm, secondary?.crm),
+      financial: mergeFinancial(primary?.financial, secondary?.financial),
       personal: mergePersonal(primary?.personal, secondary?.personal),
       learn: mergeLearn(primary?.learn, secondary?.learn),
       reputation: {
@@ -1971,6 +2041,16 @@
     };
 
     return result.tasks.length || !primary?.tasks?.length ? result : primary;
+  }
+
+  function mergeFinancial(primaryFinancial, secondaryFinancial) {
+    const primary = normalizeFinancial(primaryFinancial);
+    const secondary = normalizeFinancial(secondaryFinancial);
+
+    return {
+      view: primary.view || secondary.view || "overview",
+      accounts: mergeById(primary.accounts, secondary.accounts)
+    };
   }
 
   function mergePersonal(primaryPersonal, secondaryPersonal) {
@@ -2378,6 +2458,7 @@
     renderFocus();
     renderReputation();
     renderCrm();
+    renderFinancial();
     renderPersonal();
     renderLearn();
     renderPublic();
@@ -2418,9 +2499,16 @@
     const view = objectiveView();
     const bottleneckCandidates = objectiveBottleneckCandidates();
     const focusPathActive = objectiveFocusPathActive();
+    const hasWeightableBranches = objectiveHasWeightableBranches();
 
     if (view !== "list") {
       objectiveBottleneckMode = false;
+    }
+    if (!hasWeightableBranches || objectiveRootOpen) {
+      objectiveWeightMode = false;
+    }
+    if (objectiveWeightMode) {
+      normalizeAllObjectiveWeights();
     }
     if (state.bottleneckTaskId && !findTask(state.bottleneckTaskId)) {
       state.bottleneckTaskId = "";
@@ -2428,21 +2516,31 @@
     if (objectiveActionHintId && !findObjective(objectiveActionHintId)) {
       objectiveActionHintId = null;
     }
+    if (objectiveDraftParentId && !findObjective(objectiveDraftParentId)) {
+      objectiveDraftParentId = null;
+      objectiveDraftText = "";
+    }
 
     refs.objectiveMap?.classList.toggle("is-mindmap-view", view === "mindmap");
     refs.objectiveMap?.classList.toggle("has-objectives", state.objectives.length > 0);
     refs.objectiveMap?.classList.toggle("is-focus-path", focusPathActive);
+    refs.objectiveMap?.classList.toggle("is-weight-mode", objectiveWeightMode);
     refs.objectiveRootToggle?.classList.toggle("is-hidden", objectiveRootOpen);
     refs.objectiveViewToggle?.classList.toggle("is-hidden", objectiveRootOpen);
     refs.objectiveBottleneckToggle?.classList.toggle("is-hidden", objectiveRootOpen || view !== "list");
     refs.objectiveBottleneckToggle?.setAttribute("aria-pressed", String(objectiveBottleneckMode));
+    refs.objectiveWeightToggle?.classList.toggle("is-hidden", objectiveRootOpen || !hasWeightableBranches);
+    refs.objectiveWeightToggle?.setAttribute("aria-pressed", String(objectiveWeightMode));
     refs.objectiveRootForm?.classList.toggle("is-hidden", !objectiveRootOpen);
     refs.objectiveTree?.classList.toggle("is-hidden", view !== "list");
     refs.objectiveTree?.classList.toggle("is-bottleneck-mode", objectiveBottleneckMode);
+    refs.objectiveTree?.classList.toggle("is-weight-mode", objectiveWeightMode);
     refs.objectiveTree?.classList.toggle("is-focus-path-view", focusPathActive);
     refs.objectiveTree?.classList.toggle("has-single-selection", objectiveSelectedIds().length === 1);
     refs.objectiveMindmap?.classList.toggle("is-hidden", view !== "mindmap");
+    refs.objectiveMindmap?.classList.toggle("is-weight-mode", objectiveWeightMode);
     refs.objectiveCanvas?.classList.toggle("is-mindmap", view === "mindmap");
+    refs.objectiveCanvas?.classList.toggle("is-weight-mode", objectiveWeightMode);
     refs.objectiveCount.textContent = `${state.objectives.length} item${state.objectives.length === 1 ? "" : "s"}`;
     refs.objectiveStatus.textContent = linkedTasks ? `${linkedTasks} task${linkedTasks === 1 ? "" : "s"} linked` : "";
     renderObjectiveViewToggle();
@@ -2500,6 +2598,7 @@
     objectiveMenuId = null;
     objectiveRenameId = null;
     objectiveDraftParentId = null;
+    objectiveDraftText = "";
     mindmapViewportPrimed = false;
     saveState();
     renderMap();
@@ -2576,17 +2675,20 @@
       }
 
       const button = document.createElement("button");
+      const siblings = objectiveChildren(node.parentId || "");
       button.className = "mindmap-node";
       button.classList.toggle("is-root", !node.parentId);
       button.classList.toggle("is-task", Boolean(node.taskId && findTask(node.taskId)));
       button.classList.toggle("is-selected", objectiveIsSelected(node.id));
       button.classList.toggle("is-masked", objectiveMaskedInPath(node.id));
+      button.classList.toggle("is-weighted", mindmapNodeHasWeight(node));
       button.classList.toggle("is-focus-path", focusPathIds.has(node.id));
       button.classList.toggle("is-focus-side", focusPathActive && !focusPathIds.has(node.id));
       button.classList.toggle("is-focus-target", Boolean(node.taskId && node.taskId === focusTargetId));
       button.type = "button";
       button.dataset.id = node.id;
       button.style.transform = `translate3d(${position.x}px, ${position.y}px, 0)`;
+      setObjectiveWeightVars(button, node, siblings);
       button.setAttribute("aria-label", node.text);
 
       if (node.imageUrl) {
@@ -2605,6 +2707,13 @@
         meta.className = "mindmap-meta";
         meta.textContent = metaText;
         button.appendChild(meta);
+      }
+
+      if (objectiveWeightMode && siblings.length > 1) {
+        const weight = document.createElement("span");
+        weight.className = "mindmap-weight";
+        weight.textContent = `${objectiveWeightPercent(node, siblings)}%`;
+        button.appendChild(weight);
       }
 
       refs.objectiveMindmap.appendChild(button);
@@ -2627,15 +2736,20 @@
     let cursorY = 112;
 
     const place = (node, depth) => {
+      const nodeHeight = mindmapNodeHeight(node);
       const children = objectiveChildren(node.id);
       const childYs = children.map((child) => place(child, depth + 1));
-      const y = childYs.length ? (childYs[0] + childYs[childYs.length - 1]) / 2 : cursorY;
+      const childCenters = children.map((child, index) => childYs[index] + mindmapNodeHeight(child) / 2);
+      const childCenter = childCenters.length
+        ? (childCenters[0] + childCenters[childCenters.length - 1]) / 2
+        : cursorY + nodeHeight / 2;
+      const y = childYs.length ? childCenter - nodeHeight / 2 : cursorY;
       if (!childYs.length) {
-        cursorY += MINDMAP_ROW_GAP;
+        cursorY += nodeHeight + mindmapNodeGap();
       }
 
       autoPositions.set(node.id, {
-        x: 180 + depth * MINDMAP_COLUMN_GAP,
+        x: 180 + depth * mindmapColumnGap(),
         y
       });
 
@@ -2644,7 +2758,7 @@
 
     roots.forEach((root, index) => {
       if (index > 0) {
-        cursorY += 26;
+        cursorY += objectiveWeightMode ? 42 : 26;
       }
       place(root, 0);
     });
@@ -2675,8 +2789,15 @@
     }
 
     const values = Array.from(positions.values());
-    const width = Math.max(MINDMAP_MIN_WIDTH, Math.ceil(Math.max(...values.map((item) => item.x)) + MINDMAP_NODE_WIDTH + 360));
-    const height = Math.max(MINDMAP_MIN_HEIGHT, Math.ceil(Math.max(...values.map((item) => item.y)) + MINDMAP_NODE_HEIGHT + 260));
+    const positionedNodes = state.objectives.filter((node) => positions.has(node.id));
+    const width = Math.max(
+      MINDMAP_MIN_WIDTH,
+      Math.ceil(Math.max(...positionedNodes.map((node) => positions.get(node.id).x + mindmapNodeWidth(node))) + 360)
+    );
+    const height = Math.max(
+      MINDMAP_MIN_HEIGHT,
+      Math.ceil(Math.max(...positionedNodes.map((node) => positions.get(node.id).y + mindmapNodeHeight(node))) + 260)
+    );
 
     return { positions, width, height };
   }
@@ -2703,6 +2824,30 @@
     }, 0);
   }
 
+  function mindmapNodeHasWeight(node) {
+    return Boolean(objectiveWeightMode && objectiveChildren(node?.parentId || "").length > 1);
+  }
+
+  function mindmapBubbleSize(node) {
+    return 108 + objectiveWeightVisualRatio(objectiveWeightPercent(node)) * 128;
+  }
+
+  function mindmapNodeGap() {
+    return objectiveWeightMode ? 38 : Math.max(24, MINDMAP_ROW_GAP - MINDMAP_NODE_HEIGHT);
+  }
+
+  function mindmapColumnGap() {
+    return objectiveWeightMode ? 308 : MINDMAP_COLUMN_GAP;
+  }
+
+  function mindmapNodeWidth(node) {
+    return mindmapNodeHasWeight(node) ? mindmapBubbleSize(node) : MINDMAP_NODE_WIDTH;
+  }
+
+  function mindmapNodeHeight(node) {
+    return mindmapNodeHasWeight(node) ? mindmapBubbleSize(node) : MINDMAP_NODE_HEIGHT;
+  }
+
   function renderMindmapLinks(svg, positions) {
     svg.innerHTML = "";
 
@@ -2719,10 +2864,10 @@
       }
 
       const path = createSvg("path");
-      const startX = parentPosition.x + MINDMAP_NODE_WIDTH;
-      const startY = parentPosition.y + MINDMAP_NODE_HEIGHT / 2;
+      const startX = parentPosition.x + mindmapNodeWidth(parent);
+      const startY = parentPosition.y + mindmapNodeHeight(parent) / 2;
       const endX = childPosition.x;
-      const endY = childPosition.y + MINDMAP_NODE_HEIGHT / 2;
+      const endY = childPosition.y + mindmapNodeHeight(node) / 2;
       const curve = Math.max(54, (endX - startX) * 0.52);
       path.setAttribute("d", `M ${startX} ${startY} C ${startX + curve} ${startY}, ${endX - curve} ${endY}, ${endX} ${endY}`);
       const focusPathIds = objectiveFocusPathIds();
@@ -2785,6 +2930,7 @@
     const isBottleneckCandidate = objectiveBottleneckMode && Boolean(task);
     const isChosenBottleneck = Boolean(task && focusTargetId === task.id && !task.done);
     const children = objectiveChildren(node.id);
+    const siblings = objectiveChildren(node.parentId || "");
     const isDrafting = objectiveDraftParentId === node.id;
     const hasBranch = children.length || isDrafting;
     const isOpening = openingObjectiveIds.has(node.id);
@@ -2804,6 +2950,7 @@
     item.classList.toggle("is-focus-path", isInFocusPath);
     item.classList.toggle("is-focus-side", focusPathActive && !isInFocusPath);
     item.classList.toggle("is-focus-target", isFocusTarget);
+    item.classList.toggle("is-weighted", objectiveWeightMode && siblings.length > 1);
     item.classList.toggle("needs-next-action", objectiveActionHintId === node.id);
     item.classList.toggle("is-bottleneck-candidate", isBottleneckCandidate);
     item.classList.toggle("is-bottleneck-chosen", isChosenBottleneck);
@@ -2812,10 +2959,12 @@
     item.classList.toggle("is-drop-before", objectiveDropMode === "before");
     item.classList.toggle("is-drop-after", objectiveDropMode === "after");
     item.classList.toggle("is-drop-inside", objectiveDropMode === "inside");
+    item.classList.toggle("is-drop-inside-start", objectiveDropMode === "inside-start");
     item.classList.toggle("has-branch", Boolean(children.length));
     item.dataset.objectiveId = node.id;
     item.style.animationDelay = `${Math.min(depth, 7) * 24}ms`;
     item.style.setProperty("--depth", depth);
+    setObjectiveWeightVars(item, node, siblings);
 
     const row = document.createElement("div");
     row.className = "objective-node";
@@ -2867,6 +3016,9 @@
 
     pick.append(main);
     row.appendChild(pick);
+    if (objectiveWeightMode && siblings.length > 1) {
+      row.appendChild(createObjectiveWeightControl(node, siblings));
+    }
     row.appendChild(createObjectiveActions(node));
     item.appendChild(row);
 
@@ -2894,6 +3046,32 @@
     }
 
     return item;
+  }
+
+  function createObjectiveWeightControl(node, siblings = objectiveChildren(node.parentId || "")) {
+    const percent = objectiveWeightPercent(node, siblings);
+    const label = document.createElement("label");
+    label.className = "objective-weight-control";
+    label.dataset.id = node.id;
+
+    const output = document.createElement("output");
+    output.className = "objective-weight-output";
+    output.dataset.objectiveWeightOutput = node.id;
+    output.value = String(percent);
+    output.textContent = `${percent}%`;
+
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "0";
+    input.max = "100";
+    input.step = "1";
+    input.value = String(percent);
+    input.dataset.objectiveWeight = "true";
+    input.dataset.id = node.id;
+    input.setAttribute("aria-label", `${node.text} priority weight`);
+
+    label.append(output, input);
+    return label;
   }
 
   function createObjectiveActions(node) {
@@ -3006,6 +3184,7 @@
     input.id = "objectiveDraftInput";
     input.type = "text";
     input.autocomplete = "off";
+    input.value = objectiveDraftParentId === parentId ? objectiveDraftText : "";
     input.placeholder = objectiveActionHintId === parentId ? "Concrete next action" : "Step or task";
 
     const add = document.createElement("button");
@@ -3296,11 +3475,237 @@
     }
 
     objectiveBottleneckMode = !objectiveBottleneckMode;
+    if (objectiveBottleneckMode) {
+      objectiveWeightMode = false;
+    }
     objectiveMenuId = null;
     objectiveRenameId = null;
     objectiveDraftParentId = null;
+    objectiveDraftText = "";
     clearObjectiveSelection();
     renderMap();
+  }
+
+  function toggleObjectiveWeightMode() {
+    if (!objectiveHasWeightableBranches()) {
+      objectiveWeightMode = false;
+      renderMap();
+      return;
+    }
+
+    objectiveWeightMode = !objectiveWeightMode;
+    if (objectiveWeightMode) {
+      objectiveBottleneckMode = false;
+      objectiveMenuId = null;
+      objectiveRenameId = null;
+      objectiveDraftParentId = null;
+      objectiveDraftText = "";
+      normalizeAllObjectiveWeights();
+      saveState({ immediate: true });
+    }
+    renderMap();
+  }
+
+  function objectiveWeightGroups() {
+    const parentIds = new Set([""]);
+    state.objectives.forEach((node) => parentIds.add(node.id));
+    return Array.from(parentIds).filter((parentId) => objectiveChildren(parentId).length > 1);
+  }
+
+  function objectiveHasWeightableBranches() {
+    return objectiveWeightGroups().length > 0;
+  }
+
+  function normalizedObjectiveWeightValue(node) {
+    const value = Number(node?.weight);
+    return Number.isFinite(value) ? clamp(Math.round(value), 0, 100) : null;
+  }
+
+  function objectiveWeightPercent(node, siblings = objectiveChildren(node?.parentId || "")) {
+    if (!node || siblings.length <= 1) {
+      return 100;
+    }
+
+    const value = normalizedObjectiveWeightValue(node);
+    return value === null ? Math.round(100 / siblings.length) : value;
+  }
+
+  function objectiveWeightVisualRatio(percent) {
+    return 0.18 + clamp(Number(percent) || 0, 0, 100) / 100 * 0.82;
+  }
+
+  function setObjectiveWeightVars(element, node, siblings = objectiveChildren(node?.parentId || "")) {
+    const percent = objectiveWeightPercent(node, siblings);
+    const ratio = objectiveWeightVisualRatio(percent);
+    element.style.setProperty("--objective-weight", `${percent}%`);
+    element.style.setProperty("--objective-weight-ratio", ratio.toFixed(3));
+    element.style.setProperty("--objective-list-font", `${(1.02 + ratio * 0.24).toFixed(3)}rem`);
+    element.style.setProperty("--objective-list-pad-x", `${(8 + ratio * 9).toFixed(1)}px`);
+    element.style.setProperty("--objective-list-pad-y", `${(6 + ratio * 5).toFixed(1)}px`);
+    element.style.setProperty("--mindmap-bubble-size", `${mindmapBubbleSize(node).toFixed(1)}px`);
+    element.style.setProperty("--mindmap-bubble-pad", `${(14 + ratio * 8).toFixed(1)}px`);
+    element.style.setProperty("--mindmap-weight-width", `${(152 + ratio * 76).toFixed(1)}px`);
+    element.style.setProperty("--mindmap-weight-min-height", `${(48 + ratio * 24).toFixed(1)}px`);
+    element.style.setProperty("--mindmap-weight-pad-x", `${(10 + ratio * 6).toFixed(1)}px`);
+    element.style.setProperty("--mindmap-weight-pad-y", `${(8 + ratio * 4).toFixed(1)}px`);
+    element.style.setProperty("--mindmap-weight-title", `${(0.98 + ratio * 0.28).toFixed(3)}rem`);
+  }
+
+  function normalizeAllObjectiveWeights() {
+    let changed = false;
+    objectiveWeightGroups().forEach((parentId) => {
+      changed = normalizeObjectiveWeightGroup(parentId) || changed;
+    });
+    return changed;
+  }
+
+  function normalizeObjectiveWeightGroup(parentId) {
+    const siblings = objectiveChildren(parentId);
+    if (!siblings.length) {
+      return false;
+    }
+
+    if (siblings.length === 1) {
+      const changed = siblings[0].weight !== 100;
+      siblings[0].weight = 100;
+      return changed;
+    }
+
+    const values = siblings.map(normalizedObjectiveWeightValue);
+    const hasUnset = values.some((value) => value === null);
+    if (hasUnset) {
+      assignObjectiveWeightsEvenly(siblings, 100);
+      return true;
+    }
+
+    const total = values.reduce((sum, value) => sum + value, 0);
+    const changed = total !== 100 || siblings.some((node, index) => node.weight !== values[index]);
+    if (total <= 0) {
+      assignObjectiveWeightsEvenly(siblings, 100);
+      return true;
+    }
+
+    if (changed) {
+      assignObjectiveWeightsProportionally(siblings, 100, values, total);
+    }
+    return changed;
+  }
+
+  function assignObjectiveWeightsEvenly(nodes, total) {
+    if (!nodes.length) {
+      return;
+    }
+
+    const base = Math.floor(total / nodes.length);
+    let remaining = total - base * nodes.length;
+    nodes.forEach((node) => {
+      node.weight = base + (remaining > 0 ? 1 : 0);
+      remaining = Math.max(0, remaining - 1);
+    });
+  }
+
+  function assignObjectiveWeightsProportionally(nodes, total, values = null, valueTotal = null) {
+    if (!nodes.length) {
+      return;
+    }
+
+    const safeValues = values || nodes.map((node) => normalizedObjectiveWeightValue(node) || 0);
+    const safeTotal = valueTotal === null ? safeValues.reduce((sum, value) => sum + value, 0) : valueTotal;
+    if (safeTotal <= 0) {
+      assignObjectiveWeightsEvenly(nodes, total);
+      return;
+    }
+
+    const allocations = nodes.map((node, index) => {
+      const raw = safeValues[index] / safeTotal * total;
+      const floor = Math.floor(raw);
+      return { node, floor, remainder: raw - floor };
+    });
+    let used = allocations.reduce((sum, item) => sum + item.floor, 0);
+    allocations
+      .slice()
+      .sort((a, b) => b.remainder - a.remainder)
+      .forEach((item) => {
+        if (used >= total) {
+          return;
+        }
+        item.floor += 1;
+        used += 1;
+      });
+    allocations.forEach((item) => {
+      item.node.weight = clamp(item.floor, 0, 100);
+    });
+  }
+
+  function rebalanceObjectiveWeights(changedId, value) {
+    const changed = findObjective(changedId);
+    if (!changed) {
+      return "";
+    }
+
+    const parentId = changed.parentId || "";
+    const siblings = objectiveChildren(parentId);
+    if (siblings.length <= 1) {
+      changed.weight = 100;
+      return parentId;
+    }
+
+    const target = clamp(Math.round(Number(value) || 0), 0, 100);
+    const others = siblings.filter((node) => node.id !== changed.id);
+    changed.weight = target;
+    assignObjectiveWeightsProportionally(
+      others,
+      100 - target,
+      others.map((node) => normalizedObjectiveWeightValue(node) || 0)
+    );
+    return parentId;
+  }
+
+  function handleObjectiveWeightInput(event) {
+    const input = event.target.closest?.("[data-objective-weight]");
+    if (!input) {
+      return;
+    }
+
+    event.stopPropagation();
+    const parentId = rebalanceObjectiveWeights(input.dataset.id, input.value);
+    updateObjectiveWeightGroupDom(parentId);
+    saveState();
+  }
+
+  function handleObjectiveDraftInput(event) {
+    const input = event.target.closest?.("#objectiveDraftInput");
+    if (!input) {
+      return;
+    }
+
+    objectiveDraftText = input.value;
+  }
+
+  function updateObjectiveWeightGroupDom(parentId) {
+    objectiveChildren(parentId).forEach((node) => {
+      const siblings = objectiveChildren(node.parentId || "");
+      const percent = objectiveWeightPercent(node, siblings);
+      const item = objectiveItemElement(node.id);
+      if (item) {
+        setObjectiveWeightVars(item, node, siblings);
+      }
+
+      const control = Array.from(item?.querySelectorAll("[data-objective-weight]") || []).find(
+        (input) => input.dataset.id === node.id
+      );
+      if (control) {
+        control.value = String(percent);
+      }
+
+      const output = Array.from(item?.querySelectorAll("[data-objective-weight-output]") || []).find(
+        (element) => element.dataset.objectiveWeightOutput === node.id
+      );
+      if (output) {
+        output.value = String(percent);
+        output.textContent = `${percent}%`;
+      }
+    });
   }
 
   function chooseObjectiveBottleneck(objectiveId) {
@@ -3323,6 +3728,7 @@
     objectiveMenuId = null;
     objectiveRenameId = null;
     objectiveDraftParentId = null;
+    objectiveDraftText = "";
     syncDraftFromTasks();
     saveState({ immediate: true });
     render();
@@ -3417,6 +3823,7 @@
     const childInput = document.getElementById("objectiveDraftInput");
     const sourceInput = childInput || rootInput;
     const draft = sourceInput?.value || "";
+    objectiveDraftText = childInput ? draft : "";
     const currentParent = currentParentId ? findObjective(currentParentId) : null;
     const siblings = objectiveChildren(currentParentId || "");
     const previousSibling = siblings[siblings.length - 1];
@@ -3430,6 +3837,7 @@
       expandObjective(nextParentId);
     } else {
       objectiveDraftParentId = null;
+      objectiveDraftText = "";
       objectiveRootOpen = true;
     }
 
@@ -3481,6 +3889,7 @@
     const parentId = form.dataset.parentId || "";
     const shouldCreateTask = parentId && objectiveActionHintId === parentId && isConcreteTaskText(text);
     const shouldContinueNextAction = parentId && objectiveActionHintId === parentId && !shouldCreateTask;
+    objectiveDraftText = "";
     addObjective(text, parentId, {
       asTask: shouldCreateTask,
       nextActionHint: shouldContinueNextAction
@@ -3542,6 +3951,7 @@
 
     if (event.target.closest(".objective-child-form")) {
       objectiveDraftParentId = null;
+      objectiveDraftText = "";
       render();
       return;
     }
@@ -3591,6 +4001,7 @@
 
     if (action === "cancel-child") {
       objectiveDraftParentId = null;
+      objectiveDraftText = "";
       render();
       return;
     }
@@ -3623,6 +4034,7 @@
       setObjectiveSelection([node.id]);
       objectiveMenuId = null;
       objectiveDraftParentId = null;
+      objectiveDraftText = "";
       objectiveRenameId = node.id;
       render();
       window.setTimeout(() => {
@@ -3651,6 +4063,9 @@
 
     if (action === "add-child") {
       setObjectiveSelection([node.id]);
+      if (objectiveDraftParentId !== node.id) {
+        objectiveDraftText = "";
+      }
       objectiveDraftParentId = node.id;
       objectiveMenuId = null;
       objectiveRenameId = null;
@@ -3689,9 +4104,13 @@
       masked: false,
       imageUrl: "",
       imageUpdatedAt: 0,
+      weight: null,
       createdAt: Date.now() + Math.random()
     };
     state.objectives.push(node);
+    if (objectiveWeightMode) {
+      normalizeObjectiveWeightGroup(parentId || "");
+    }
     if (options.asTask && isConcreteTaskText(node.text)) {
       linkTaskToObjective(node);
       state.currentPair = null;
@@ -3807,7 +4226,7 @@
     updateObjectiveDragPreview(event.clientX, event.clientY);
 
     const target = objectiveDragTarget(event.clientX, event.clientY);
-    const dropMode = target ? objectiveDropModeForTarget(target, event.clientY) : "";
+    const dropMode = target ? objectiveDropModeForTarget(target, event.clientX, event.clientY) : "";
     if (!target || !dropMode) {
       if (objectiveDrag.dropTargetId) {
         objectiveDrag.dropTargetId = null;
@@ -3821,8 +4240,8 @@
     objectiveDrag.dropTargetId = target.id;
     objectiveDrag.dropMode = dropMode;
 
-    const moved = dropMode === "inside"
-      ? moveObjectivesInside(objectiveDrag.ids, target.id)
+    const moved = dropMode === "inside" || dropMode === "inside-start"
+      ? moveObjectivesInside(objectiveDrag.ids, target.id, dropMode === "inside-start")
       : moveObjectivesNear(objectiveDrag.ids, target.id, dropMode === "after");
 
     if (moved) {
@@ -3866,6 +4285,7 @@
     objectiveMenuId = null;
     objectiveRenameId = null;
     objectiveDraftParentId = null;
+    objectiveDraftText = "";
     document.body.classList.add("is-objective-dragging");
     document.body.appendChild(preview);
     updateObjectiveDragPreview(objectivePress.startX, objectivePress.startY);
@@ -4133,6 +4553,7 @@
     return {
       id: node.id,
       parentId: node.parentId || "",
+      left: box.left,
       top: box.top,
       bottom: box.bottom,
       height: box.height,
@@ -4140,15 +4561,24 @@
     };
   }
 
-  function objectiveDropModeForTarget(target, y) {
+  function objectiveDropModeForTarget(target, x, y) {
     if (!objectiveDrag || !target || target.id === objectiveDrag.id) {
       return "";
     }
 
     const upperEdge = target.top + target.height * 0.28;
     const lowerEdge = target.bottom - target.height * 0.28;
-    if (objectiveCanMoveGroupInside(objectiveDrag.ids, target.id) && y >= upperEdge && y <= lowerEdge) {
-      return "inside";
+    if (objectiveCanMoveGroupInside(objectiveDrag.ids, target.id)) {
+      const targetHasChildren = objectiveChildren(target.id).some((node) => !objectiveDragIncludes(node.id));
+      const overBranchBody = x > target.left + 38;
+
+      if (targetHasChildren && overBranchBody && y < upperEdge) {
+        return "inside-start";
+      }
+
+      if (y >= upperEdge && y <= lowerEdge) {
+        return "inside";
+      }
     }
 
     if (!objectiveCanMoveGroupToParent(objectiveDrag.ids, target.parentId || "")) {
@@ -4192,13 +4622,17 @@
         resequenceObjectiveSiblings(objectiveChildren(parentId).filter((item) => !movingSet.has(item.id)));
       }
     });
+    if (objectiveWeightMode) {
+      oldParentIds.add(nextParentId);
+      oldParentIds.forEach((parentId) => normalizeObjectiveWeightGroup(parentId));
+    }
     movingIds.forEach(refreshObjectiveTaskPaths);
 
     setObjectiveSelection(movingIds);
     return true;
   }
 
-  function moveObjectivesInside(ids, targetId) {
+  function moveObjectivesInside(ids, targetId, atStart = false) {
     const movingIds = objectiveTopLevelIds(ids);
     const movingNodes = movingIds.map((id) => findObjective(id)).filter(Boolean);
     const target = findObjective(targetId);
@@ -4213,9 +4647,12 @@
     const alreadyLastChildren =
       currentMovingChildren.length === movingNodes.length &&
       currentChildren.slice(-movingNodes.length).every((item, index) => item.id === movingNodes[index].id);
+    const alreadyFirstChildren =
+      currentMovingChildren.length === movingNodes.length &&
+      currentChildren.slice(0, movingNodes.length).every((item, index) => item.id === movingNodes[index].id);
     const children = currentChildren.filter((item) => !movingSet.has(item.id));
 
-    if (alreadyLastChildren) {
+    if ((atStart && alreadyFirstChildren) || (!atStart && alreadyLastChildren)) {
       setObjectiveSelection(movingIds);
       return false;
     }
@@ -4223,13 +4660,21 @@
     movingNodes.forEach((node) => {
       node.parentId = targetId;
     });
-    children.push(...movingNodes);
+    if (atStart) {
+      children.unshift(...movingNodes);
+    } else {
+      children.push(...movingNodes);
+    }
     resequenceObjectiveSiblings(children);
     oldParentIds.forEach((parentId) => {
       if (parentId !== targetId) {
         resequenceObjectiveSiblings(objectiveChildren(parentId).filter((item) => !movingSet.has(item.id)));
       }
     });
+    if (objectiveWeightMode) {
+      oldParentIds.add(targetId);
+      oldParentIds.forEach((parentId) => normalizeObjectiveWeightGroup(parentId));
+    }
     movingIds.forEach(refreshObjectiveTaskPaths);
     expandObjective(targetId);
     setObjectiveSelection(movingIds);
@@ -4275,11 +4720,15 @@
       });
       resequenceObjectiveSiblings(nextOrder);
     });
+    if (objectiveWeightMode) {
+      parentIds.forEach((parentId) => normalizeObjectiveWeightGroup(parentId));
+    }
 
     setObjectiveSelection(Array.from(rootCloneBySource.values()).map((node) => node.id));
     objectiveMenuId = null;
     objectiveRenameId = null;
     objectiveDraftParentId = null;
+    objectiveDraftText = "";
     saveState({ immediate: true });
     render();
   }
@@ -4292,6 +4741,7 @@
       kind: source.kind,
       taskId: "",
       masked: Boolean(source.masked),
+      weight: normalizedObjectiveWeightValue(source),
       createdAt: stamp + clones.length + Math.random()
     };
     clones.push(clone);
@@ -4445,6 +4895,7 @@
       collapsed.add(id);
       if (objectiveDraftParentId === id) {
         objectiveDraftParentId = null;
+        objectiveDraftText = "";
       }
       state.collapsedObjectives = Array.from(collapsed);
       startBranchMotion(id, "closing");
@@ -4501,6 +4952,7 @@
     });
     if (removeIds.has(objectiveDraftParentId)) {
       objectiveDraftParentId = null;
+      objectiveDraftText = "";
     }
     if (removeIds.has(objectiveMenuId)) {
       objectiveMenuId = null;
@@ -4518,6 +4970,9 @@
         selectedObjectiveIds.add(selectedObjectiveId);
       }
     }
+    if (objectiveWeightMode) {
+      normalizeObjectiveWeightGroup(deleted?.parentId || "");
+    }
 
     saveState({ immediate: true });
     render();
@@ -4531,6 +4986,9 @@
 
     if (!isConcreteTaskText(node.text)) {
       objectiveActionHintId = node.id;
+      if (objectiveDraftParentId !== node.id) {
+        objectiveDraftText = "";
+      }
       objectiveDraftParentId = node.id;
       objectiveMenuId = null;
       objectiveRenameId = null;
@@ -5089,6 +5547,235 @@
     return new Intl.NumberFormat("en-GB", {
       notation: Number(value) >= 10000 ? "compact" : "standard",
       maximumFractionDigits: 1
+    }).format(Number(value) || 0);
+  }
+
+  function renderFinancial() {
+    if (!refs.financialOverviewList || !refs.financialAccountList) {
+      return;
+    }
+
+    state.financial = normalizeFinancial(state.financial);
+    const financial = state.financial;
+
+    refs.financialTabs.forEach((button) => {
+      const isActive = button.dataset.financialView === financial.view;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-current", isActive ? "page" : "false");
+    });
+
+    refs.financialPanels.forEach((panel) => {
+      panel.classList.toggle("is-active", panel.dataset.financialPanel === financial.view);
+    });
+
+    renderFinancialOverview();
+    renderFinancialAccounts();
+  }
+
+  function setFinancialView(view) {
+    if (!FINANCIAL_VIEWS.includes(view)) {
+      return;
+    }
+
+    state.financial = normalizeFinancial(state.financial);
+    state.financial.view = view;
+    saveState();
+    renderFinancial();
+  }
+
+  function addFinancialAccount(event) {
+    event.preventDefault();
+    state.financial = normalizeFinancial(state.financial);
+    const type = ["bank", "stripe", "cash"].includes(refs.financialTypeInput.value)
+      ? refs.financialTypeInput.value
+      : "bank";
+    const source = refs.financialSourceInput.value.replace(/\s+/g, " ").trim() || financialTypeLabel(type);
+
+    state.financial.accounts.push({
+      id: makeId(),
+      type,
+      source,
+      balance: Number(refs.financialBalanceInput.value) || 0,
+      income: Math.max(0, Number(refs.financialIncomeInput.value) || 0),
+      spend: Math.max(0, Number(refs.financialSpendInput.value) || 0),
+      readonly: true,
+      updatedAt: Date.now(),
+      createdAt: Date.now()
+    });
+
+    refs.financialAccountForm.reset();
+    refs.financialAccountForm.closest("details")?.removeAttribute("open");
+    saveState({ immediate: true });
+    renderFinancial();
+  }
+
+  function handleFinancialAction(event) {
+    const button = event.target.closest("[data-financial-action]");
+    if (!button) {
+      return;
+    }
+
+    state.financial = normalizeFinancial(state.financial);
+    if (button.dataset.financialAction === "delete-account") {
+      state.financial.accounts = state.financial.accounts.filter((account) => account.id !== button.dataset.id);
+      saveState({ immediate: true });
+      renderFinancial();
+    }
+  }
+
+  function connectFinancialSource(source) {
+    const url = financialConnectUrl(source);
+    if (url) {
+      window.location.href = url;
+      return;
+    }
+
+    refs.financialConnectNote.textContent = "Server needed";
+  }
+
+  function renderFinancialOverview() {
+    const accounts = [...state.financial.accounts];
+    const totals = financialTotals(accounts);
+    refs.financialBalanceTotal.textContent = formatFinancialMoney(totals.balance);
+    refs.financialProfitTotal.textContent = formatFinancialMoney(totals.profit);
+    refs.financialIncomeTotal.textContent = formatFinancialMoney(totals.income);
+    refs.financialSpendTotal.textContent = formatFinancialMoney(totals.spend);
+    refs.financialAccountTotal.textContent = String(accounts.length);
+    refs.financialOverviewList.innerHTML = "";
+
+    if (!accounts.length) {
+      refs.financialOverviewList.appendChild(createVaultEmpty("Connect"));
+      return;
+    }
+
+    [
+      ["In", totals.income, "is-income"],
+      ["Out", totals.spend, "is-spend"],
+      ["Net", totals.profit, totals.profit >= 0 ? "is-income" : "is-spend"]
+    ].forEach(([label, value, className], index) => {
+      refs.financialOverviewList.appendChild(createFinancialBar(label, value, totals.maxFlow, className, index));
+    });
+  }
+
+  function renderFinancialAccounts() {
+    const accounts = [...state.financial.accounts].sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+    refs.financialAccountList.innerHTML = "";
+
+    if (!accounts.length) {
+      refs.financialAccountList.appendChild(createVaultEmpty("Add account"));
+      return;
+    }
+
+    accounts.forEach((account, index) => {
+      refs.financialAccountList.appendChild(createFinancialAccountRow(account, index));
+    });
+  }
+
+  function createFinancialBar(label, value, max, className, index) {
+    const item = document.createElement("li");
+    item.className = `vault-row finance-bar ${className}`;
+    item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+
+    const main = document.createElement("span");
+    main.className = "vault-row-main";
+
+    const title = document.createElement("span");
+    title.className = "vault-row-title";
+    title.textContent = label;
+    main.appendChild(title);
+
+    const amount = document.createElement("output");
+    amount.className = "vault-row-value";
+    amount.textContent = formatFinancialMoney(value);
+
+    const track = document.createElement("span");
+    track.className = "vault-track";
+    const fill = document.createElement("span");
+    fill.style.transform = `scaleX(${clamp(Math.abs(value) / max, 0.04, 1)})`;
+    track.appendChild(fill);
+
+    item.append(main, amount, track);
+    return item;
+  }
+
+  function createFinancialAccountRow(account, index) {
+    const item = document.createElement("li");
+    item.className = `vault-row finance-account-row is-${account.type}`;
+    item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+
+    const main = document.createElement("span");
+    main.className = "vault-row-main";
+
+    const title = document.createElement("span");
+    title.className = "vault-row-title";
+    title.textContent = account.source;
+
+    const meta = document.createElement("span");
+    meta.className = "vault-row-meta";
+    meta.textContent = financialTypeLabel(account.type);
+
+    main.append(title, meta);
+
+    const amount = document.createElement("output");
+    amount.className = "vault-row-value";
+    amount.textContent = formatFinancialMoney(account.balance);
+
+    const remove = document.createElement("button");
+    remove.className = "icon-control vault-row-delete";
+    remove.type = "button";
+    remove.dataset.id = account.id;
+    remove.dataset.financialAction = "delete-account";
+    remove.dataset.tooltip = "Delete";
+    remove.setAttribute("aria-label", `Delete ${account.source}`);
+    remove.appendChild(createControlIcon("trash"));
+
+    item.append(main, amount, remove);
+    return item;
+  }
+
+  function financialTotals(accounts) {
+    const totals = accounts.reduce(
+      (sum, account) => {
+        sum.balance += Number(account.balance) || 0;
+        sum.income += Number(account.income) || 0;
+        sum.spend += Number(account.spend) || 0;
+        return sum;
+      },
+      { balance: 0, income: 0, spend: 0 }
+    );
+    totals.profit = totals.income - totals.spend;
+    totals.maxFlow = Math.max(1, Math.abs(totals.income), Math.abs(totals.spend), Math.abs(totals.profit));
+    return totals;
+  }
+
+  function financialConnectUrl(source) {
+    const urls = window.DO_FINANCE_CONNECT_URLS || {};
+    if (source === "stripe") {
+      return typeof urls.stripe === "string" ? urls.stripe : "";
+    }
+
+    if (source === "bank") {
+      return typeof urls.bank === "string" ? urls.bank : typeof urls.openBanking === "string" ? urls.openBanking : "";
+    }
+
+    return "";
+  }
+
+  function financialTypeLabel(type) {
+    if (type === "stripe") {
+      return "Stripe";
+    }
+    if (type === "cash") {
+      return "Cash";
+    }
+    return "Bank";
+  }
+
+  function formatFinancialMoney(value) {
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: "GBP",
+      maximumFractionDigits: 0
     }).format(Number(value) || 0);
   }
 
@@ -7151,6 +7838,7 @@
       }
     };
     objectiveDraftParentId = null;
+    objectiveDraftText = "";
     selectedObjectiveId = null;
     selectedObjectiveIds.clear();
     objectiveRootOpen = false;
@@ -7178,6 +7866,7 @@
     activeInviteProfileId = null;
     pendingSupportDialog = false;
     objectiveDraftParentId = null;
+    objectiveDraftText = "";
     selectedObjectiveId = null;
     selectedObjectiveIds.clear();
     objectiveRootOpen = false;
