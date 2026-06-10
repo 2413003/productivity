@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=goal-flow-31">
+    <link rel="stylesheet" href="styles.css?v=goal-flow-33">
   </head>
   <body>
     <div class="shell">
@@ -576,18 +576,59 @@
               <button type="button" data-personal-view="food">Food</button>
             </nav>
 
-            <section class="vault-panel" data-personal-panel="sleep" aria-label="Sleep">
+            <section class="vault-panel" data-personal-panel="sleep" aria-label="Sleep Log">
               <details class="vault-add">
-                <summary aria-label="Add sleep">
+                <summary aria-label="Add sleep log">
                   <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                     <path d="M12 5v14" />
                     <path d="M5 12h14" />
                   </svg>
                 </summary>
-                <form class="vault-form" id="sleepForm">
-                  <input id="sleepDateInput" type="date">
-                  <input id="sleepHoursInput" type="number" min="0" max="24" step="0.25" inputmode="decimal" placeholder="Hours">
-                  <input id="sleepQualityInput" type="number" min="0" max="10" step="1" inputmode="numeric" placeholder="Quality /10">
+                <form class="vault-form sleep-form" id="sleepForm">
+                  <label class="vault-mini-field">
+                    <span>Date</span>
+                    <input id="sleepDateInput" type="date">
+                  </label>
+                  <label class="vault-mini-field">
+                    <span>Bed</span>
+                    <input id="sleepBedtimeInput" type="time">
+                  </label>
+                  <label class="vault-mini-field">
+                    <span>Wake</span>
+                    <input id="sleepWakeInput" type="time">
+                  </label>
+                  <label class="vault-mini-field">
+                    <span>Q</span>
+                    <input id="sleepQualityInput" type="number" min="0" max="10" step="1" inputmode="numeric" placeholder="/10">
+                  </label>
+                  <label class="vault-mini-field">
+                    <span>Caff</span>
+                    <input id="sleepCaffeineInput" type="time">
+                  </label>
+                  <label class="vault-mini-field">
+                    <span>Screen</span>
+                    <input id="sleepScreenCutoffInput" type="time">
+                  </label>
+                  <label class="vault-mini-field">
+                    <span>Stress</span>
+                    <input id="sleepStressInput" type="number" min="0" max="10" step="1" inputmode="numeric" placeholder="/10">
+                  </label>
+                  <label class="vault-mini-field">
+                    <span>Nap</span>
+                    <input id="sleepNapInput" type="number" min="0" max="600" step="5" inputmode="numeric" placeholder="min">
+                  </label>
+                  <label class="vault-mini-field">
+                    <span>Temp</span>
+                    <input id="sleepTempInput" type="number" min="0" max="40" step="0.5" inputmode="decimal" placeholder="C">
+                  </label>
+                  <label class="vault-check sleep-check">
+                    <input id="sleepAlcoholInput" type="checkbox">
+                    <span>Alcohol</span>
+                  </label>
+                  <label class="vault-check sleep-check">
+                    <input id="sleepExerciseInput" type="checkbox">
+                    <span>Exercise</span>
+                  </label>
                   <button class="primary" type="submit">Add</button>
                 </form>
               </details>
@@ -595,6 +636,7 @@
                 <span><strong id="sleepAvg">0h</strong><small>Avg</small></span>
                 <span><strong id="sleepLast">0h</strong><small>Last</small></span>
               </div>
+              <ul class="sleep-patterns" id="sleepPatternList" aria-label="Sleep patterns"></ul>
               <ul class="vault-list" id="sleepList"></ul>
             </section>
 
@@ -659,16 +701,14 @@
 
             <section class="vault-panel" data-learn-panel="people" aria-label="People to learn from">
               <details class="vault-add">
-                <summary aria-label="Add person to learn from">
+                <summary aria-label="Add category">
                   <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                     <path d="M12 5v14" />
                     <path d="M5 12h14" />
                   </svg>
                 </summary>
-                <form class="vault-form is-wide" id="learnPersonForm">
-                  <input id="learnPersonNameInput" type="text" autocomplete="off" placeholder="Person">
-                  <input id="learnPersonCategoryInput" type="text" autocomplete="off" placeholder="Category">
-                  <input id="learnPersonLessonInput" type="text" autocomplete="off" placeholder="What to learn">
+                <form class="vault-form is-compact" id="learnCategoryForm">
+                  <input id="learnCategoryInput" type="text" autocomplete="off" placeholder="Category">
                   <button class="primary" type="submit">Add</button>
                 </form>
               </details>
@@ -835,6 +875,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=goal-flow-31"></script>
+    <script src="script.js?v=goal-flow-33"></script>
   </body>
 </html>

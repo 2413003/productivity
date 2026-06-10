@@ -2652,9 +2652,19 @@ h2 {
   grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
 }
 
+.vault-form.is-compact {
+  grid-template-columns: minmax(180px, 1fr) auto;
+  max-width: 520px;
+}
+
+.sleep-form {
+  grid-template-columns: repeat(6, minmax(92px, 1fr)) auto;
+}
+
 .crm-form input,
 .vault-form input,
-.vault-form select {
+.vault-form select,
+.learn-person-form input {
   min-width: 0;
   min-height: 44px;
   border: 1px solid var(--line);
@@ -2666,6 +2676,19 @@ h2 {
 
 .vault-form select {
   appearance: none;
+}
+
+.vault-mini-field {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.vault-mini-field input {
+  width: 100%;
 }
 
 .finance-form {
@@ -2692,6 +2715,10 @@ h2 {
   min-height: 0;
   padding: 0;
   accent-color: var(--accent);
+}
+
+.sleep-check {
+  align-self: end;
 }
 
 .crm-panel,
@@ -3000,18 +3027,85 @@ h2 {
   list-style: none;
 }
 
-.vault-group-heading {
-  margin-top: 18px;
-  padding: 0 0 6px;
+.sleep-patterns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 2px;
+  padding: 0;
+  list-style: none;
+}
+
+.sleep-patterns.is-empty {
+  display: none;
+}
+
+.sleep-patterns li {
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
   color: var(--muted);
+  padding: 7px 10px;
   font-size: 0.78rem;
   font-weight: 650;
   line-height: 1.2;
   animation: rowIn 240ms ease both;
 }
 
-.vault-group-heading:first-child {
-  margin-top: 2px;
+.vault-category {
+  border-bottom: 1px solid var(--line);
+  animation: rowIn 240ms ease both;
+}
+
+.vault-category-head {
+  min-height: 58px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  cursor: pointer;
+}
+
+.vault-category-title {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.vault-category-actions {
+  display: inline-flex;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.vault-category:hover .vault-category-actions,
+.vault-category:focus-within .vault-category-actions,
+.vault-category.is-empty .vault-category-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.vault-category-people {
+  margin: 0 0 0 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.vault-category-people .vault-row:last-child {
+  border-bottom: 0;
+}
+
+.learn-person-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  gap: 8px;
+  margin: 0 0 12px 18px;
 }
 
 .vault-row {
@@ -3650,7 +3744,9 @@ h2 {
   .vault-form,
   .finance-form,
   .vault-form.is-wide,
-  .vault-edit-form {
+  .vault-form.is-compact,
+  .vault-edit-form,
+  .learn-person-form {
     grid-template-columns: minmax(0, 1fr);
   }
 

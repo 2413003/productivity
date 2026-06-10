@@ -203,10 +203,19 @@
     personalPanels: Array.from(document.querySelectorAll("[data-personal-panel]")),
     sleepForm: document.getElementById("sleepForm"),
     sleepDateInput: document.getElementById("sleepDateInput"),
-    sleepHoursInput: document.getElementById("sleepHoursInput"),
+    sleepBedtimeInput: document.getElementById("sleepBedtimeInput"),
+    sleepWakeInput: document.getElementById("sleepWakeInput"),
     sleepQualityInput: document.getElementById("sleepQualityInput"),
+    sleepCaffeineInput: document.getElementById("sleepCaffeineInput"),
+    sleepScreenCutoffInput: document.getElementById("sleepScreenCutoffInput"),
+    sleepStressInput: document.getElementById("sleepStressInput"),
+    sleepNapInput: document.getElementById("sleepNapInput"),
+    sleepTempInput: document.getElementById("sleepTempInput"),
+    sleepAlcoholInput: document.getElementById("sleepAlcoholInput"),
+    sleepExerciseInput: document.getElementById("sleepExerciseInput"),
     sleepAvg: document.getElementById("sleepAvg"),
     sleepLast: document.getElementById("sleepLast"),
+    sleepPatternList: document.getElementById("sleepPatternList"),
     sleepList: document.getElementById("sleepList"),
     foodForm: document.getElementById("foodForm"),
     foodDateInput: document.getElementById("foodDateInput"),
@@ -223,10 +232,8 @@
     beliefTextInput: document.getElementById("beliefTextInput"),
     beliefWhyInput: document.getElementById("beliefWhyInput"),
     beliefList: document.getElementById("beliefList"),
-    learnPersonForm: document.getElementById("learnPersonForm"),
-    learnPersonNameInput: document.getElementById("learnPersonNameInput"),
-    learnPersonCategoryInput: document.getElementById("learnPersonCategoryInput"),
-    learnPersonLessonInput: document.getElementById("learnPersonLessonInput"),
+    learnCategoryForm: document.getElementById("learnCategoryForm"),
+    learnCategoryInput: document.getElementById("learnCategoryInput"),
     learnPersonList: document.getElementById("learnPersonList")
   };
 
@@ -274,6 +281,7 @@
   let mindmapPan = null;
   let mindmapViewportPrimed = false;
   let editingBeliefId = null;
+  let addingPersonCategoryId = "";
   let openingObjectiveIds = new Set();
   let closingObjectiveIds = new Set();
   let branchMotionTimers = new Map();
@@ -434,8 +442,10 @@
     refs.beliefList?.addEventListener("click", handleLearnAction);
     refs.beliefList?.addEventListener("submit", saveBeliefEdit);
     refs.beliefList?.addEventListener("keydown", handleLearnKeydown);
-    refs.learnPersonForm?.addEventListener("submit", addLearnPerson);
+    refs.learnCategoryForm?.addEventListener("submit", addLearnCategory);
     refs.learnPersonList?.addEventListener("click", handleLearnAction);
+    refs.learnPersonList?.addEventListener("submit", addLearnPerson);
+    refs.learnPersonList?.addEventListener("keydown", handleLearnKeydown);
     refs.authForm.addEventListener("submit", signIn);
     refs.passwordModeBtn?.addEventListener("click", togglePasswordAuthMode);
     refs.signUpBtn.addEventListener("click", signUp);
@@ -693,13 +703,27 @@
     return Array.isArray(entries)
       ? entries
           .filter((entry) => entry && typeof entry === "object")
-          .map((entry) => ({
-            id: typeof entry.id === "string" && entry.id ? entry.id : makeId(),
-            date: normalizeDateValue(entry.date),
-            hours: clamp(Number(entry.hours) || 0, 0, 24),
-            quality: clamp(Number(entry.quality) || 0, 0, 10),
-            createdAt: Number(entry.createdAt) || Date.now()
-          }))
+          .map((entry) => {
+            const bedtime = normalizeTimeValue(entry.bedtime);
+            const wakeTime = normalizeTimeValue(entry.wakeTime);
+            const computedHours = sleepDurationFromTimes(bedtime, wakeTime);
+            return {
+              id: typeof entry.id === "string" && entry.id ? entry.id : makeId(),
+              date: normalizeDateValue(entry.date),
+              hours: clamp(Number(entry.hours) || computedHours || 0, 0, 24),
+              bedtime,
+              wakeTime,
+              quality: clamp(Number(entry.quality) || 0, 0, 10),
+              caffeineTime: normalizeTimeValue(entry.caffeineTime),
+              alcohol: Boolean(entry.alcohol),
+              exercise: Boolean(entry.exercise),
+              screenCutoff: normalizeTimeValue(entry.screenCutoff),
+              stress: clamp(Number(entry.stress) || 0, 0, 10),
+              naps: clamp(Number(entry.naps) || 0, 0, 600),
+              roomTemp: entry.roomTemp === "" || entry.roomTemp == null ? "" : clamp(Number(entry.roomTemp) || 0, 0, 40),
+              createdAt: Number(entry.createdAt) || Date.now()
+            };
+          })
           .filter((entry) => entry.hours > 0)
       : [];
   }
@@ -723,11 +747,16 @@
   function normalizeLearn(learn = {}) {
     const source = learn && typeof learn === "object" ? learn : {};
     const view = LEARN_VIEWS.includes(source.view) ? source.view : "beliefs";
+    const categories = normalizeLearnCategories(source.categories, source.people);
+    const categoryById = new Map(categories.map((category) => [category.id, category]));
+    const categoryByName = new Map(categories.map((category) => [learnCategoryKey(category.name), category]));
+    const fallbackCategoryId = categories[0]?.id || "";
 
     return {
       view,
       beliefs: normalizeBeliefs(source.beliefs),
-      people: normalizeLearnPeople(source.people)
+      categories,
+      people: normalizeLearnPeople(source.people, categoryById, categoryByName, fallbackCategoryId)
     };
   }
 
@@ -745,19 +774,96 @@
       : [];
   }
 
-  function normalizeLearnPeople(people) {
+  function normalizeLearnCategories(categories, people) {
+    const groups = new Map();
+
+    const addCategory = (name, createdAt, id = "") => {
+      const normalizedName = normalizeLearnCategoryName(name);
+      if (!normalizedName) {
+        return;
+      }
+
+      const key = learnCategoryKey(normalizedName);
+      if (groups.has(key)) {
+        return;
+      }
+
+      groups.set(key, {
+        id: typeof id === "string" && id ? id : learnCategoryIdFromName(normalizedName),
+        name: normalizedName,
+        createdAt: Number(createdAt) || Date.now()
+      });
+    };
+
+    if (Array.isArray(categories)) {
+      categories.forEach((category) => {
+        if (typeof category === "string") {
+          addCategory(category, Date.now());
+          return;
+        }
+
+        if (category && typeof category === "object") {
+          addCategory(category.name, category.createdAt, category.id);
+        }
+      });
+    }
+
+    if (Array.isArray(people)) {
+      people.forEach((person) => {
+        if (!person || typeof person !== "object") {
+          return;
+        }
+
+        if (typeof person.category === "string" && person.category.trim()) {
+          addCategory(person.category, person.createdAt);
+        }
+      });
+
+      if (!groups.size && people.some((person) => person && typeof person.name === "string" && person.name.trim())) {
+        addCategory("General", Date.now(), "learn-category-general");
+      }
+    }
+
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.name === "General") return 1;
+      if (b.name === "General") return -1;
+      return (b.createdAt || 0) - (a.createdAt || 0) || a.name.localeCompare(b.name);
+    });
+  }
+
+  function normalizeLearnPeople(people, categoryById = new Map(), categoryByName = new Map(), fallbackCategoryId = "") {
     return Array.isArray(people)
       ? people
           .filter((person) => person && typeof person.name === "string")
-          .map((person) => ({
-            id: typeof person.id === "string" && person.id ? person.id : makeId(),
-            name: person.name.replace(/\s+/g, " ").trim(),
-            category: typeof person.category === "string" ? person.category.replace(/\s+/g, " ").trim() : "",
-            lesson: typeof person.lesson === "string" ? person.lesson.replace(/\s+/g, " ").trim() : "",
-            createdAt: Number(person.createdAt) || Date.now()
-          }))
+          .map((person) => {
+            const legacyCategory = normalizeLearnCategoryName(person.category);
+            const categoryId = categoryById.has(person.categoryId)
+              ? person.categoryId
+              : categoryByName.get(learnCategoryKey(legacyCategory))?.id || fallbackCategoryId;
+
+            return {
+              id: typeof person.id === "string" && person.id ? person.id : makeId(),
+              name: person.name.replace(/\s+/g, " ").trim(),
+              categoryId,
+              lesson: typeof person.lesson === "string" ? person.lesson.replace(/\s+/g, " ").trim() : "",
+              createdAt: Number(person.createdAt) || Date.now()
+            };
+          })
           .filter((person) => person.name)
       : [];
+  }
+
+  function normalizeLearnCategoryName(value) {
+    return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  }
+
+  function learnCategoryKey(value) {
+    return normalizeLearnCategoryName(value).toLowerCase();
+  }
+
+  function learnCategoryIdFromName(value) {
+    const slug = learnCategoryKey(value).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return `learn-category-${slug || "general"}`;
   }
 
   function objectiveCreatesCycle(node, nodes) {
@@ -5824,10 +5930,12 @@
   function addSleepEntry(event) {
     event.preventDefault();
     state.personal = normalizePersonal(state.personal);
-    const hours = clamp(Number(refs.sleepHoursInput.value) || 0, 0, 24);
+    const bedtime = normalizeTimeValue(refs.sleepBedtimeInput.value);
+    const wakeTime = normalizeTimeValue(refs.sleepWakeInput.value);
+    const hours = sleepDurationFromTimes(bedtime, wakeTime);
 
     if (!hours) {
-      refs.sleepHoursInput.focus();
+      refs.sleepBedtimeInput.focus();
       return;
     }
 
@@ -5835,7 +5943,16 @@
       id: makeId(),
       date: normalizeDateValue(refs.sleepDateInput.value),
       hours,
+      bedtime,
+      wakeTime,
       quality: clamp(Number(refs.sleepQualityInput.value) || 0, 0, 10),
+      caffeineTime: normalizeTimeValue(refs.sleepCaffeineInput.value),
+      alcohol: refs.sleepAlcoholInput.checked,
+      exercise: refs.sleepExerciseInput.checked,
+      screenCutoff: normalizeTimeValue(refs.sleepScreenCutoffInput.value),
+      stress: clamp(Number(refs.sleepStressInput.value) || 0, 0, 10),
+      naps: clamp(Number(refs.sleepNapInput.value) || 0, 0, 600),
+      roomTemp: refs.sleepTempInput.value === "" ? "" : clamp(Number(refs.sleepTempInput.value) || 0, 0, 40),
       createdAt: Date.now()
     });
 
@@ -5895,10 +6012,12 @@
   function renderSleep() {
     const entries = [...state.personal.sleep].sort(compareEntriesByDate);
     refs.sleepList.innerHTML = "";
+    refs.sleepPatternList.innerHTML = "";
     const recent = entries.slice(0, 7);
     const averageHours = recent.length ? recent.reduce((sum, entry) => sum + entry.hours, 0) / recent.length : 0;
     refs.sleepAvg.textContent = formatSleepHours(averageHours);
     refs.sleepLast.textContent = entries.length ? formatSleepHours(entries[0].hours) : "0h";
+    renderSleepPatterns(entries);
 
     if (!entries.length) {
       refs.sleepList.appendChild(createVaultEmpty("Add sleep"));
@@ -5909,7 +6028,7 @@
     entries.forEach((entry, index) => {
       const item = createVaultMetricRow({
         title: formatEntryDate(entry.date),
-        meta: entry.quality ? `Quality ${entry.quality}/10` : "",
+        meta: sleepEntryMeta(entry),
         value: formatSleepHours(entry.hours),
         scale: clamp(entry.hours / max, 0.04, 1),
         action: "delete-sleep",
@@ -5918,6 +6037,111 @@
       });
       refs.sleepList.appendChild(item);
     });
+  }
+
+  function renderSleepPatterns(entries) {
+    const patterns = sleepPatterns(entries);
+    refs.sleepPatternList.classList.toggle("is-empty", patterns.length === 0);
+    patterns.forEach((pattern, index) => {
+      const item = document.createElement("li");
+      item.style.animationDelay = `${Math.min(index, 5) * 28}ms`;
+      item.textContent = pattern;
+      refs.sleepPatternList.appendChild(item);
+    });
+  }
+
+  function sleepPatterns(entries) {
+    if (entries.length > 0 && entries.length < 3) {
+      return ["3 logs for patterns"];
+    }
+
+    if (entries.length < 3) {
+      return [];
+    }
+
+    const factors = [
+      {
+        label: "caffeine is after 2pm",
+        test: (entry) => timeToMinutes(entry.caffeineTime) > 14 * 60
+      },
+      {
+        label: "alcohol is logged",
+        test: (entry) => entry.alcohol
+      },
+      {
+        label: "screen cutoff is after 10pm",
+        test: (entry) => timeToMinutes(entry.screenCutoff) > 22 * 60
+      },
+      {
+        label: "stress is 7+",
+        test: (entry) => entry.stress >= 7
+      },
+      {
+        label: "naps are 30m+",
+        test: (entry) => entry.naps >= 30
+      },
+      {
+        label: "room temp is above 20C",
+        test: (entry) => entry.roomTemp !== "" && Number(entry.roomTemp) > 20
+      },
+      {
+        label: "exercise is logged",
+        test: (entry) => entry.exercise
+      }
+    ];
+
+    const scored = factors
+      .map((factor) => sleepPatternForFactor(entries, factor))
+      .filter(Boolean)
+      .sort((a, b) => b.strength - a.strength)
+      .slice(0, 2)
+      .map((pattern) => pattern.text);
+
+    return scored.length ? scored : ["No clear pattern yet"];
+  }
+
+  function sleepPatternForFactor(entries, factor) {
+    const withFactor = entries.filter(factor.test);
+    const withoutFactor = entries.filter((entry) => !factor.test(entry));
+
+    if (withFactor.length < 2 || withoutFactor.length < 2) {
+      return null;
+    }
+
+    const withQuality = sleepAverage(withFactor, "quality");
+    const withoutQuality = sleepAverage(withoutFactor, "quality");
+    const qualityDelta = withQuality && withoutQuality ? withQuality - withoutQuality : 0;
+    const hourDelta = sleepAverage(withFactor, "hours") - sleepAverage(withoutFactor, "hours");
+    const strength = Math.max(Math.abs(qualityDelta) / 0.8, Math.abs(hourDelta) / 0.5);
+
+    if (strength < 1) {
+      return null;
+    }
+
+    const better = qualityDelta ? qualityDelta > 0 : hourDelta > 0;
+    return {
+      strength,
+      text: `${better ? "Better" : "Worse"} when ${factor.label}.`
+    };
+  }
+
+  function sleepAverage(entries, field) {
+    const values = entries.map((entry) => Number(entry[field]) || 0).filter((value) => value > 0);
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  }
+
+  function sleepEntryMeta(entry) {
+    const bits = [];
+    if (entry.quality) bits.push(`Q ${entry.quality}/10`);
+    if (entry.bedtime && entry.wakeTime) bits.push(`${entry.bedtime}-${entry.wakeTime}`);
+    if (entry.caffeineTime) bits.push(`caff ${entry.caffeineTime}`);
+    if (entry.alcohol) bits.push("alcohol");
+    if (entry.exercise) bits.push("exercise");
+    if (entry.screenCutoff) bits.push(`screen ${entry.screenCutoff}`);
+    if (entry.stress) bits.push(`stress ${entry.stress}`);
+    if (entry.naps) bits.push(`nap ${entry.naps}m`);
+    if (entry.roomTemp !== "") bits.push(`${entry.roomTemp}C`);
+    return bits.join(" · ");
   }
 
   function renderFood() {
@@ -6017,26 +6241,73 @@
     renderLearn();
   }
 
-  function addLearnPerson(event) {
+  function addLearnCategory(event) {
     event.preventDefault();
     state.learn = normalizeLearn(state.learn);
-    const name = refs.learnPersonNameInput.value.replace(/\s+/g, " ").trim();
+    const name = normalizeLearnCategoryName(refs.learnCategoryInput.value);
 
     if (!name) {
-      refs.learnPersonNameInput.focus();
+      refs.learnCategoryInput.focus();
+      return;
+    }
+
+    const exists = state.learn.categories.some((category) => learnCategoryKey(category.name) === learnCategoryKey(name));
+    if (exists) {
+      refs.learnCategoryInput.focus();
+      return;
+    }
+
+    const category = {
+      id: makeId(),
+      name,
+      createdAt: Date.now()
+    };
+
+    state.learn.categories.push(category);
+    addingPersonCategoryId = category.id;
+
+    refs.learnCategoryForm.reset();
+    refs.learnCategoryForm.closest("details")?.removeAttribute("open");
+    saveState({ immediate: true });
+    renderLearn();
+    window.requestAnimationFrame(() => {
+      refs.learnPersonList?.querySelector(`[data-category-id="${category.id}"] input[name="personName"]`)?.focus();
+    });
+  }
+
+  function addLearnPerson(event) {
+    const form = event.target.closest(".learn-person-form");
+    if (!form) {
+      return;
+    }
+
+    event.preventDefault();
+    state.learn = normalizeLearn(state.learn);
+    const categoryId = form.dataset.categoryId;
+    const category = state.learn.categories.find((item) => item.id === categoryId);
+    if (!category) {
+      addingPersonCategoryId = "";
+      renderLearn();
+      return;
+    }
+
+    const nameInput = form.elements.namedItem("personName");
+    const lessonInput = form.elements.namedItem("personLesson");
+    const name = nameInput.value.replace(/\s+/g, " ").trim();
+    if (!name) {
+      nameInput.focus();
       return;
     }
 
     state.learn.people.push({
       id: makeId(),
       name,
-      category: refs.learnPersonCategoryInput?.value.replace(/\s+/g, " ").trim() || "",
-      lesson: refs.learnPersonLessonInput.value.replace(/\s+/g, " ").trim(),
+      categoryId,
+      lesson: lessonInput.value.replace(/\s+/g, " ").trim(),
       createdAt: Date.now()
     });
 
-    refs.learnPersonForm.reset();
-    refs.learnPersonForm.closest("details")?.removeAttribute("open");
+    addingPersonCategoryId = "";
     saveState({ immediate: true });
     renderLearn();
   }
@@ -6069,6 +6340,23 @@
       state.learn.beliefs = state.learn.beliefs.filter((item) => item.id !== id);
       if (editingBeliefId === id) {
         editingBeliefId = null;
+      }
+    } else if (button.dataset.learnAction === "add-person-to-category") {
+      addingPersonCategoryId = addingPersonCategoryId === id ? "" : id;
+      renderLearn();
+      if (addingPersonCategoryId) {
+        window.requestAnimationFrame(() => {
+          refs.learnPersonList?.querySelector(`[data-category-id="${id}"] input[name="personName"]`)?.focus();
+        });
+      }
+      return;
+    } else if (button.dataset.learnAction === "delete-category") {
+      const hasPeople = state.learn.people.some((person) => person.categoryId === id);
+      if (!hasPeople) {
+        state.learn.categories = state.learn.categories.filter((item) => item.id !== id);
+      }
+      if (addingPersonCategoryId === id) {
+        addingPersonCategoryId = "";
       }
     } else if (button.dataset.learnAction === "delete-person") {
       state.learn.people = state.learn.people.filter((item) => item.id !== id);
@@ -6154,54 +6442,131 @@
 
   function renderLearnPeople() {
     refs.learnPersonList.innerHTML = "";
+    const categories = [...state.learn.categories].sort((a, b) => {
+      if (a.name === "General") return 1;
+      if (b.name === "General") return -1;
+      return (b.createdAt || 0) - (a.createdAt || 0) || a.name.localeCompare(b.name);
+    });
     const people = [...state.learn.people].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-    if (!people.length) {
-      refs.learnPersonList.appendChild(createVaultEmpty("Add a person"));
+    if (!categories.length) {
+      refs.learnPersonList.appendChild(createVaultEmpty("Add category"));
       return;
     }
 
-    learnPeopleGroups(people).forEach((group, groupIndex) => {
-      refs.learnPersonList.appendChild(createVaultGroupHeader(group.label, groupIndex));
-      group.people.forEach((person, index) => {
-        refs.learnPersonList.appendChild(createVaultTextRow({
-          title: person.name,
-          meta: person.lesson,
-          action: "delete-person",
-          id: person.id,
-          index: groupIndex + index
-        }));
-      });
-    });
-  }
-
-  function learnPeopleGroups(people) {
-    const groups = new Map();
+    const peopleByCategory = new Map(categories.map((category) => [category.id, []]));
     people.forEach((person) => {
-      const label = person.category || "General";
-      const key = label.toLowerCase();
-      if (!groups.has(key)) {
-        groups.set(key, { label, people: [], latest: 0 });
+      if (!peopleByCategory.has(person.categoryId)) {
+        return;
       }
 
-      const group = groups.get(key);
-      group.people.push(person);
-      group.latest = Math.max(group.latest, person.createdAt || 0);
+      peopleByCategory.get(person.categoryId).push(person);
     });
 
-    return Array.from(groups.values()).sort((a, b) => {
-      if (a.label === "General") return 1;
-      if (b.label === "General") return -1;
-      return b.latest - a.latest || a.label.localeCompare(b.label);
+    if (addingPersonCategoryId && !categories.some((category) => category.id === addingPersonCategoryId)) {
+      addingPersonCategoryId = "";
+    }
+
+    categories.forEach((category, categoryIndex) => {
+      refs.learnPersonList.appendChild(createLearnCategoryGroup({
+        category,
+        people: peopleByCategory.get(category.id) || [],
+        index: categoryIndex
+      }));
     });
   }
 
-  function createVaultGroupHeader(label, index) {
+  function createLearnCategoryGroup({ category, people, index }) {
     const item = document.createElement("li");
-    item.className = "vault-group-heading";
+    item.className = "vault-category";
+    item.classList.toggle("is-empty", people.length === 0);
+    item.dataset.categoryId = category.id;
     item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
-    item.textContent = label;
+
+    const head = document.createElement("div");
+    head.className = "vault-category-head";
+    head.dataset.id = category.id;
+    head.dataset.learnAction = "add-person-to-category";
+    head.setAttribute("role", "button");
+    head.tabIndex = 0;
+    head.setAttribute("aria-label", `Add person to ${category.name}`);
+
+    const title = document.createElement("span");
+    title.className = "vault-category-title";
+    title.textContent = category.name;
+
+    const actions = document.createElement("span");
+    actions.className = "vault-category-actions";
+
+    const add = document.createElement("button");
+    add.className = "icon-control vault-category-action vault-category-add";
+    add.type = "button";
+    add.dataset.id = category.id;
+    add.dataset.learnAction = "add-person-to-category";
+    add.dataset.tooltip = "Add person";
+    add.setAttribute("aria-label", `Add person to ${category.name}`);
+    add.appendChild(createControlIcon("plus"));
+    actions.appendChild(add);
+
+    if (!people.length) {
+      const removeCategory = document.createElement("button");
+      removeCategory.className = "icon-control vault-category-action";
+      removeCategory.type = "button";
+      removeCategory.dataset.id = category.id;
+      removeCategory.dataset.learnAction = "delete-category";
+      removeCategory.dataset.tooltip = "Delete";
+      removeCategory.setAttribute("aria-label", `Delete ${category.name}`);
+      removeCategory.appendChild(createControlIcon("trash"));
+      actions.appendChild(removeCategory);
+    }
+
+    head.append(title, actions);
+    item.appendChild(head);
+
+    if (addingPersonCategoryId === category.id) {
+      item.appendChild(createLearnPersonForm(category));
+    }
+
+    const list = document.createElement("ul");
+    list.className = "vault-category-people";
+    people.forEach((person, personIndex) => {
+      list.appendChild(createVaultTextRow({
+        title: person.name,
+        meta: person.lesson,
+        action: "delete-person",
+        id: person.id,
+        index: personIndex
+      }));
+    });
+
+    item.appendChild(list);
     return item;
+  }
+
+  function createLearnPersonForm(category) {
+    const form = document.createElement("form");
+    form.className = "learn-person-form";
+    form.dataset.categoryId = category.id;
+
+    const name = document.createElement("input");
+    name.name = "personName";
+    name.type = "text";
+    name.autocomplete = "off";
+    name.placeholder = "Person";
+
+    const lesson = document.createElement("input");
+    lesson.name = "personLesson";
+    lesson.type = "text";
+    lesson.autocomplete = "off";
+    lesson.placeholder = "What to learn";
+
+    const submit = document.createElement("button");
+    submit.className = "primary";
+    submit.type = "submit";
+    submit.textContent = "Add";
+
+    form.append(name, lesson, submit);
+    return form;
   }
 
   function createBeliefEditRow(belief, index) {
@@ -6352,6 +6717,31 @@
 
   function normalizeDateValue(value) {
     return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : localDateValue();
+  }
+
+  function normalizeTimeValue(value) {
+    return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : "";
+  }
+
+  function timeToMinutes(value) {
+    const time = normalizeTimeValue(value);
+    if (!time) {
+      return 0;
+    }
+
+    const [hours, minutes] = time.split(":").map(Number);
+    return hours * 60 + minutes;
+  }
+
+  function sleepDurationFromTimes(bedtime, wakeTime) {
+    const start = timeToMinutes(bedtime);
+    const end = timeToMinutes(wakeTime);
+    if (!bedtime || !wakeTime || start === end) {
+      return 0;
+    }
+
+    const minutes = end > start ? end - start : end + 24 * 60 - start;
+    return clamp(minutes / 60, 0, 24);
   }
 
   function localDateValue(date = new Date()) {
