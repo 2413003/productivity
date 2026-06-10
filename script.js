@@ -9,7 +9,7 @@
   const PAGE_VIEW_ORDER = ["map", "input", "choose", "focus", "reputation"];
   const CRM_VIEWS = ["people", "map", "labour", "money", "attention", "trust"];
   const FINANCIAL_VIEWS = ["overview", "accounts", "connect"];
-  const PERSONAL_VIEWS = ["sleep", "food"];
+  const PERSONAL_VIEWS = ["sleep", "food", "mind"];
   const LEARN_VIEWS = ["beliefs", "people"];
   const BRANCH_MOTION_MS = 190;
   const OBJECTIVE_DRAG_HOLD_MS = 420;
@@ -226,6 +226,17 @@
     foodProteinAvg: document.getElementById("foodProteinAvg"),
     foodUpfDays: document.getElementById("foodUpfDays"),
     foodList: document.getElementById("foodList"),
+    mindForm: document.getElementById("mindForm"),
+    mindDateInput: document.getElementById("mindDateInput"),
+    mindMoodInput: document.getElementById("mindMoodInput"),
+    mindFutureInput: document.getElementById("mindFutureInput"),
+    mindWinInput: document.getElementById("mindWinInput"),
+    mindLookForwardInput: document.getElementById("mindLookForwardInput"),
+    mindNextInput: document.getElementById("mindNextInput"),
+    mindMoodAvg: document.getElementById("mindMoodAvg"),
+    mindFutureAvg: document.getElementById("mindFutureAvg"),
+    mindFocusList: document.getElementById("mindFocusList"),
+    mindList: document.getElementById("mindList"),
     learnTabs: Array.from(document.querySelectorAll("[data-learn-view]")),
     learnPanels: Array.from(document.querySelectorAll("[data-learn-panel]")),
     beliefForm: document.getElementById("beliefForm"),
@@ -435,6 +446,8 @@
     refs.sleepList?.addEventListener("click", handlePersonalAction);
     refs.foodForm?.addEventListener("submit", addFoodEntry);
     refs.foodList?.addEventListener("click", handlePersonalAction);
+    refs.mindForm?.addEventListener("submit", addMindEntry);
+    refs.mindList?.addEventListener("click", handlePersonalAction);
     refs.learnTabs.forEach((button) => {
       button.addEventListener("click", () => setLearnView(button.dataset.learnView));
     });
@@ -695,7 +708,8 @@
     return {
       view,
       sleep: normalizeSleepEntries(source.sleep),
-      food: normalizeFoodEntries(source.food)
+      food: normalizeFoodEntries(source.food),
+      mind: normalizeMindEntries(source.mind)
     };
   }
 
@@ -741,6 +755,24 @@
             createdAt: Number(entry.createdAt) || Date.now()
           }))
           .filter((entry) => entry.protein > 0 || entry.note)
+      : [];
+  }
+
+  function normalizeMindEntries(entries) {
+    return Array.isArray(entries)
+      ? entries
+          .filter((entry) => entry && typeof entry === "object")
+          .map((entry) => ({
+            id: typeof entry.id === "string" && entry.id ? entry.id : makeId(),
+            date: normalizeDateValue(entry.date),
+            mood: clamp(Number(entry.mood) || 0, 0, 10),
+            future: clamp(Number(entry.future) || 0, 0, 10),
+            win: typeof entry.win === "string" ? entry.win.replace(/\s+/g, " ").trim() : "",
+            lookForward: typeof entry.lookForward === "string" ? entry.lookForward.replace(/\s+/g, " ").trim() : "",
+            next: typeof entry.next === "string" ? entry.next.replace(/\s+/g, " ").trim() : "",
+            createdAt: Number(entry.createdAt) || Date.now()
+          }))
+          .filter((entry) => entry.mood || entry.future || entry.win || entry.lookForward || entry.next)
       : [];
   }
 
@@ -2168,7 +2200,8 @@
     return {
       view: primary.view || secondary.view || "sleep",
       sleep: mergeById(primary.sleep, secondary.sleep),
-      food: mergeById(primary.food, secondary.food)
+      food: mergeById(primary.food, secondary.food),
+      mind: mergeById(primary.mind, secondary.mind)
     };
   }
 
@@ -5888,7 +5921,7 @@
   }
 
   function renderPersonal() {
-    if (!refs.sleepList || !refs.foodList) {
+    if (!refs.sleepList || !refs.foodList || !refs.mindList) {
       return;
     }
 
@@ -5911,9 +5944,13 @@
     if (document.activeElement !== refs.foodDateInput && !refs.foodDateInput.value) {
       refs.foodDateInput.value = localDateValue();
     }
+    if (document.activeElement !== refs.mindDateInput && !refs.mindDateInput.value) {
+      refs.mindDateInput.value = localDateValue();
+    }
 
     renderSleep();
     renderFood();
+    renderMind();
   }
 
   function setPersonalView(view) {
@@ -5990,6 +6027,38 @@
     renderPersonal();
   }
 
+  function addMindEntry(event) {
+    event.preventDefault();
+    state.personal = normalizePersonal(state.personal);
+    const mood = clamp(Number(refs.mindMoodInput.value) || 0, 0, 10);
+    const future = clamp(Number(refs.mindFutureInput.value) || 0, 0, 10);
+    const win = refs.mindWinInput.value.replace(/\s+/g, " ").trim();
+    const lookForward = refs.mindLookForwardInput.value.replace(/\s+/g, " ").trim();
+    const next = refs.mindNextInput.value.replace(/\s+/g, " ").trim();
+
+    if (!mood && !future && !win && !lookForward && !next) {
+      refs.mindWinInput.focus();
+      return;
+    }
+
+    state.personal.mind.push({
+      id: makeId(),
+      date: normalizeDateValue(refs.mindDateInput.value),
+      mood,
+      future,
+      win,
+      lookForward,
+      next,
+      createdAt: Date.now()
+    });
+
+    refs.mindForm.reset();
+    refs.mindDateInput.value = localDateValue();
+    refs.mindForm.closest("details")?.removeAttribute("open");
+    saveState({ immediate: true });
+    renderPersonal();
+  }
+
   function handlePersonalAction(event) {
     const button = event.target.closest("[data-personal-action]");
     if (!button) {
@@ -6003,6 +6072,8 @@
       state.personal.sleep = state.personal.sleep.filter((entry) => entry.id !== id);
     } else if (button.dataset.personalAction === "delete-food") {
       state.personal.food = state.personal.food.filter((entry) => entry.id !== id);
+    } else if (button.dataset.personalAction === "delete-mind") {
+      state.personal.mind = state.personal.mind.filter((entry) => entry.id !== id);
     }
 
     saveState({ immediate: true });
@@ -6183,6 +6254,75 @@
       });
       refs.foodList.appendChild(item);
     });
+  }
+
+  function renderMind() {
+    const entries = [...state.personal.mind].sort(compareEntriesByDate);
+    refs.mindList.innerHTML = "";
+    refs.mindFocusList.innerHTML = "";
+
+    const recent = entries.slice(0, 7);
+    refs.mindMoodAvg.textContent = formatMindScore(averageEntryValue(recent, "mood"));
+    refs.mindFutureAvg.textContent = formatMindScore(averageEntryValue(recent, "future"));
+    renderMindFocus(entries);
+
+    if (!entries.length) {
+      refs.mindList.appendChild(createVaultEmpty("Add a check-in"));
+      return;
+    }
+
+    entries.forEach((entry, index) => {
+      refs.mindList.appendChild(createVaultTextRow({
+        title: mindEntryTitle(entry),
+        meta: mindEntryMeta(entry),
+        action: "delete-mind",
+        id: entry.id,
+        index
+      }));
+    });
+  }
+
+  function renderMindFocus(entries) {
+    const latest = entries[0];
+    const items = latest
+      ? [
+          latest.lookForward ? `Future: ${latest.lookForward}` : "",
+          latest.win ? `Win: ${latest.win}` : "",
+          latest.next ? `Next: ${latest.next}` : ""
+        ].filter(Boolean)
+      : ["One win. One future. One next step."];
+
+    refs.mindFocusList.classList.toggle("is-empty", items.length === 0);
+    items.slice(0, 3).forEach((text, index) => {
+      const item = document.createElement("li");
+      item.style.animationDelay = `${Math.min(index, 5) * 28}ms`;
+      item.textContent = text;
+      refs.mindFocusList.appendChild(item);
+    });
+  }
+
+  function mindEntryTitle(entry) {
+    return entry.lookForward || entry.win || entry.next || formatEntryDate(entry.date);
+  }
+
+  function mindEntryMeta(entry) {
+    const bits = [];
+    if (entry.mood) bits.push(`Mood ${entry.mood}/10`);
+    if (entry.future) bits.push(`Future ${entry.future}/10`);
+    if (entry.win && entry.win !== mindEntryTitle(entry)) bits.push(`Win: ${entry.win}`);
+    if (entry.next && entry.next !== mindEntryTitle(entry)) bits.push(`Next: ${entry.next}`);
+    bits.push(formatEntryDate(entry.date));
+    return bits.join(" - ");
+  }
+
+  function averageEntryValue(entries, field) {
+    const values = entries.map((entry) => Number(entry[field]) || 0).filter((value) => value > 0);
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  }
+
+  function formatMindScore(value) {
+    const number = Number(value) || 0;
+    return number ? String(Math.round(number * 10) / 10) : "0";
   }
 
   function renderLearn() {

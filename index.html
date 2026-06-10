@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=goal-flow-33">
+    <link rel="stylesheet" href="styles.css?v=goal-flow-34">
   </head>
   <body>
     <div class="shell">
@@ -574,6 +574,7 @@
             <nav class="vault-tabs" aria-label="Personal views">
               <button type="button" data-personal-view="sleep">Sleep</button>
               <button type="button" data-personal-view="food">Food</button>
+              <button type="button" data-personal-view="mind">Mind</button>
             </nav>
 
             <section class="vault-panel" data-personal-panel="sleep" aria-label="Sleep Log">
@@ -665,6 +666,32 @@
                 <span><strong id="foodUpfDays">0</strong><small>UPF days</small></span>
               </div>
               <ul class="vault-list" id="foodList"></ul>
+            </section>
+
+            <section class="vault-panel" data-personal-panel="mind" aria-label="Mind">
+              <details class="vault-add">
+                <summary aria-label="Add mind check-in">
+                  <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                </summary>
+                <form class="vault-form mind-form" id="mindForm">
+                  <input id="mindDateInput" type="date">
+                  <input id="mindMoodInput" type="number" min="0" max="10" step="1" inputmode="numeric" placeholder="Mood /10">
+                  <input id="mindFutureInput" type="number" min="0" max="10" step="1" inputmode="numeric" placeholder="Future /10">
+                  <input id="mindWinInput" type="text" autocomplete="off" placeholder="Win">
+                  <input id="mindLookForwardInput" type="text" autocomplete="off" placeholder="Looking forward">
+                  <input id="mindNextInput" type="text" autocomplete="off" placeholder="Next">
+                  <button class="primary" type="submit">Add</button>
+                </form>
+              </details>
+              <div class="vault-summary" aria-label="Mind summary">
+                <span><strong id="mindMoodAvg">0</strong><small>Mood</small></span>
+                <span><strong id="mindFutureAvg">0</strong><small>Future</small></span>
+              </div>
+              <ul class="mind-focus" id="mindFocusList" aria-label="Mind focus"></ul>
+              <ul class="vault-list" id="mindList"></ul>
             </section>
           </div>
         </section>
@@ -875,6 +902,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=goal-flow-33"></script>
+    <script src="script.js?v=goal-flow-34"></script>
   </body>
 </html>

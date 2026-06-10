@@ -2661,6 +2661,10 @@ h2 {
   grid-template-columns: repeat(6, minmax(92px, 1fr)) auto;
 }
 
+.mind-form {
+  grid-template-columns: minmax(120px, 0.7fr) repeat(2, minmax(96px, 0.55fr)) repeat(3, minmax(150px, 1fr)) auto;
+}
+
 .crm-form input,
 .vault-form input,
 .vault-form select,
@@ -3027,7 +3031,8 @@ h2 {
   list-style: none;
 }
 
-.sleep-patterns {
+.sleep-patterns,
+.mind-focus {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -3036,11 +3041,13 @@ h2 {
   list-style: none;
 }
 
-.sleep-patterns.is-empty {
+.sleep-patterns.is-empty,
+.mind-focus.is-empty {
   display: none;
 }
 
-.sleep-patterns li {
+.sleep-patterns li,
+.mind-focus li {
   max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 999px;
