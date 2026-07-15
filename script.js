@@ -1255,7 +1255,7 @@
   }
 
   function signInRequired() {
-    return backendConfigured() && (!session || recoveryMode);
+    return backendConfigured() && (!session || recoveryMode) && !stateHasUserData(state);
   }
 
   function renderFastStartupView() {
@@ -1274,6 +1274,11 @@
     if (persistedSession) {
       session = persistedSession;
       showAuthenticatedApp();
+      return;
+    }
+
+    if (stateHasUserData(state)) {
+      render();
       return;
     }
 
@@ -1366,6 +1371,16 @@
   }
 
   function initialView() {
+    const requestedView = requestedInitialView();
+
+    if (requestedView) {
+      return requestedView;
+    }
+
+    if (stateHasUserData(state)) {
+      return defaultOpenView();
+    }
+
     if (backendConfigured()) {
       return "account";
     }
@@ -1373,7 +1388,20 @@
     return defaultOpenView();
   }
 
+  function requestedInitialView() {
+    try {
+      const requested = new URLSearchParams(window.location.search).get("view");
+      return hasScreen(requested) ? requested : "";
+    } catch (error) {
+      return "";
+    }
+  }
+
   function defaultOpenView() {
+    if (state.objectives.length) {
+      return "map";
+    }
+
     if (hasScreen("personal")) {
       return "personal";
     }
@@ -1462,7 +1490,9 @@
           continueSessionStartup();
         }
       } else {
-        activeView = "account";
+        if (!stateHasUserData(state)) {
+          activeView = "account";
+        }
         setSyncStatus("Ready");
         render();
       }
@@ -1479,7 +1509,7 @@
       supabaseClient = null;
       setSyncStatus("Try again later");
       console.error(error);
-      if (!session) {
+      if (!session && !stateHasUserData(state)) {
         activeView = "account";
       }
       render();
