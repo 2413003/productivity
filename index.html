@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=goal-flow-34">
+    <link rel="stylesheet" href="styles.css?v=goal-flow-43">
   </head>
   <body>
     <div class="shell">
@@ -424,9 +424,11 @@
             </div>
 
             <nav class="crm-tabs" aria-label="CRM views">
+              <button type="button" data-crm-view="next">Next</button>
               <button type="button" data-crm-view="people">People</button>
+              <button type="button" data-crm-view="pipeline">Pipeline</button>
               <button type="button" data-crm-view="map">Map</button>
-              <button type="button" data-crm-view="labour">Labour</button>
+              <button type="button" data-crm-view="labour">Time</button>
               <button type="button" data-crm-view="money">Money</button>
               <button type="button" data-crm-view="attention">Attention</button>
               <button type="button" data-crm-view="trust">Trust</button>
@@ -441,6 +443,16 @@
               </summary>
               <form class="crm-form" id="crmPersonForm">
                 <input id="crmNameInput" type="text" autocomplete="off" placeholder="Name">
+                <input id="crmContextInput" class="crm-field-wide" type="text" autocomplete="off" placeholder="Why they matter">
+                <input id="crmNextInput" class="crm-field-wide" type="text" autocomplete="off" placeholder="Next move">
+                <input id="crmNextDateInput" type="date" aria-label="Next date">
+                <select id="crmStatusInput" aria-label="Status">
+                  <option value="new">New</option>
+                  <option value="warm">Warm</option>
+                  <option value="active">Active</option>
+                  <option value="important">Important</option>
+                  <option value="dormant">Dormant</option>
+                </select>
                 <input id="crmAreaInput" type="text" autocomplete="off" placeholder="Area / postcode">
                 <input id="crmLabourInput" type="number" min="0" step="0.25" inputmode="decimal" placeholder="Hours / month">
                 <input id="crmSpendInput" type="number" min="0" step="1" inputmode="decimal" placeholder="£ / month">
@@ -449,8 +461,17 @@
               </form>
             </details>
 
+            <section class="crm-panel" data-crm-panel="next" aria-label="Next">
+              <div class="crm-command" id="crmCommand"></div>
+              <ul class="crm-next-list" id="crmNextList"></ul>
+            </section>
+
             <section class="crm-panel" data-crm-panel="people" aria-label="People">
               <ul class="crm-people-list" id="crmPeopleList"></ul>
+            </section>
+
+            <section class="crm-panel" data-crm-panel="pipeline" aria-label="Pipeline">
+              <ul class="crm-pipeline-list" id="crmPipelineList"></ul>
             </section>
 
             <section class="crm-panel" data-crm-panel="map" aria-label="Map">
@@ -572,9 +593,9 @@
             </div>
 
             <nav class="vault-tabs" aria-label="Personal views">
+              <button type="button" data-personal-view="mind">Mind</button>
               <button type="button" data-personal-view="sleep">Sleep</button>
               <button type="button" data-personal-view="food">Food</button>
-              <button type="button" data-personal-view="mind">Mind</button>
             </nav>
 
             <section class="vault-panel" data-personal-panel="sleep" aria-label="Sleep Log">
@@ -669,6 +690,18 @@
             </section>
 
             <section class="vault-panel" data-personal-panel="mind" aria-label="Mind">
+              <div class="vault-summary proof-summary" aria-label="Proof summary">
+                <span><strong id="mindMoodAvg">0</strong><small>Done</small></span>
+                <span><strong id="mindFutureAvg">0</strong><small>Mapped</small></span>
+              </div>
+              <section class="mind-lift" aria-label="Mind lift">
+                <small id="mindLiftKicker">Proof</small>
+                <strong id="mindLiftTitle">Your proof wall is ready.</strong>
+                <span id="mindLiftLine">It fills itself from completed tasks, saved images, money, relationships, sleep and food.</span>
+              </section>
+              <ul class="mind-focus" id="mindFocusList" aria-label="Mind focus"></ul>
+              <ul class="proof-wall" id="proofWall" aria-label="Proof wall"></ul>
+              <ul class="vault-list mind-checkins" id="mindList"></ul>
               <details class="vault-add">
                 <summary aria-label="Add mind check-in">
                   <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -678,20 +711,14 @@
                 </summary>
                 <form class="vault-form mind-form" id="mindForm">
                   <input id="mindDateInput" type="date">
-                  <input id="mindMoodInput" type="number" min="0" max="10" step="1" inputmode="numeric" placeholder="Mood /10">
-                  <input id="mindFutureInput" type="number" min="0" max="10" step="1" inputmode="numeric" placeholder="Future /10">
+                  <input id="mindMoodInput" type="number" min="0" max="10" step="1" inputmode="numeric" placeholder="Feel /10">
+                  <input id="mindFutureInput" type="number" min="0" max="10" step="1" inputmode="numeric" placeholder="Excited /10">
                   <input id="mindWinInput" type="text" autocomplete="off" placeholder="Win">
-                  <input id="mindLookForwardInput" type="text" autocomplete="off" placeholder="Looking forward">
+                  <input id="mindLookForwardInput" type="text" autocomplete="off" placeholder="Future">
                   <input id="mindNextInput" type="text" autocomplete="off" placeholder="Next">
-                  <button class="primary" type="submit">Add</button>
+                  <button class="primary" type="submit">Save</button>
                 </form>
               </details>
-              <div class="vault-summary" aria-label="Mind summary">
-                <span><strong id="mindMoodAvg">0</strong><small>Mood</small></span>
-                <span><strong id="mindFutureAvg">0</strong><small>Future</small></span>
-              </div>
-              <ul class="mind-focus" id="mindFocusList" aria-label="Mind focus"></ul>
-              <ul class="vault-list" id="mindList"></ul>
             </section>
           </div>
         </section>
@@ -902,6 +929,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="script.js?v=goal-flow-34"></script>
+    <script src="script.js?v=goal-flow-43"></script>
   </body>
 </html>

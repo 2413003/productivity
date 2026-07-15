@@ -2,14 +2,21 @@
   const STORE_KEY = "priority-state-v1";
   const LEGACY_STORE_KEY = "two-choice-state-v1";
   const ACCOUNT_STORE_PREFIX = "do-account-state-v1:";
+  const BACKUP_STORE_PREFIX = "priority-state-backup-v1:";
+  const BACKUP_INDEX_KEY = "priority-state-backup-index-v1";
+  const MAX_LOCAL_BACKUPS = 12;
+  const CLOUD_DRAFT_STATE_PREFIX = "__DO_APP_STATE_V1__";
+  const CLOUD_STATE_TASK_ID = "__do_app_state_v1__";
+  const CLOUD_STATE_TASK_PREFIX = "__DO_APP_STATE_TASK_V1__";
   const ACCOUNT_EMAIL_KEY = "do-account-email-v1";
   const BACKEND_CONFIG_KEY = "do-supabase-config-v1";
   const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
   const DEFAULT_DAY_END_TIME = "18:00";
   const PAGE_VIEW_ORDER = ["map", "input", "choose", "focus", "reputation"];
-  const CRM_VIEWS = ["people", "map", "labour", "money", "attention", "trust"];
+  const CRM_VIEWS = ["next", "people", "pipeline", "map", "labour", "money", "attention", "trust"];
+  const CRM_STATUSES = ["new", "warm", "active", "important", "dormant"];
   const FINANCIAL_VIEWS = ["overview", "accounts", "connect"];
-  const PERSONAL_VIEWS = ["sleep", "food", "mind"];
+  const PERSONAL_VIEWS = ["mind", "sleep", "food"];
   const LEARN_VIEWS = ["beliefs", "people"];
   const BRANCH_MOTION_MS = 190;
   const OBJECTIVE_DRAG_HOLD_MS = 420;
@@ -163,10 +170,17 @@
     crmPanels: Array.from(document.querySelectorAll("[data-crm-panel]")),
     crmPersonForm: document.getElementById("crmPersonForm"),
     crmNameInput: document.getElementById("crmNameInput"),
+    crmContextInput: document.getElementById("crmContextInput"),
+    crmStatusInput: document.getElementById("crmStatusInput"),
+    crmNextInput: document.getElementById("crmNextInput"),
+    crmNextDateInput: document.getElementById("crmNextDateInput"),
     crmAreaInput: document.getElementById("crmAreaInput"),
     crmLabourInput: document.getElementById("crmLabourInput"),
     crmSpendInput: document.getElementById("crmSpendInput"),
     crmViewsInput: document.getElementById("crmViewsInput"),
+    crmNextList: document.getElementById("crmNextList"),
+    crmCommand: document.getElementById("crmCommand"),
+    crmPipelineList: document.getElementById("crmPipelineList"),
     crmPeopleList: document.getElementById("crmPeopleList"),
     crmMapCity: document.getElementById("crmMapCity"),
     crmMapCount: document.getElementById("crmMapCount"),
@@ -235,7 +249,11 @@
     mindNextInput: document.getElementById("mindNextInput"),
     mindMoodAvg: document.getElementById("mindMoodAvg"),
     mindFutureAvg: document.getElementById("mindFutureAvg"),
+    mindLiftKicker: document.getElementById("mindLiftKicker"),
+    mindLiftTitle: document.getElementById("mindLiftTitle"),
+    mindLiftLine: document.getElementById("mindLiftLine"),
     mindFocusList: document.getElementById("mindFocusList"),
+    proofWall: document.getElementById("proofWall"),
     mindList: document.getElementById("mindList"),
     learnTabs: Array.from(document.querySelectorAll("[data-learn-view]")),
     learnPanels: Array.from(document.querySelectorAll("[data-learn-panel]")),
@@ -291,6 +309,7 @@
   let mindmapDrag = null;
   let mindmapPan = null;
   let mindmapViewportPrimed = false;
+  let crmEditingPersonId = "";
   let editingBeliefId = null;
   let addingPersonCategoryId = "";
   let openingObjectiveIds = new Set();
@@ -299,6 +318,7 @@
   let cloudSchema = {
     profileDraft: null,
     profileObjectives: null,
+    profileAppState: null,
     taskLevel: null
   };
 
@@ -429,7 +449,12 @@
       button.addEventListener("click", () => setCrmView(button.dataset.crmView));
     });
     refs.crmPersonForm?.addEventListener("submit", addCrmPerson);
+    refs.crmCommand?.addEventListener("click", handleCrmPersonAction);
+    refs.crmNextList?.addEventListener("click", handleCrmPersonAction);
+    refs.crmNextList?.addEventListener("submit", saveCrmPersonEdit);
     refs.crmPeopleList?.addEventListener("click", handleCrmPersonAction);
+    refs.crmPeopleList?.addEventListener("submit", saveCrmPersonEdit);
+    refs.crmPipelineList?.addEventListener("click", handleCrmPersonAction);
     refs.crmTrustList?.addEventListener("input", handleCrmTrustInput);
     refs.financialTabs.forEach((button) => {
       button.addEventListener("click", () => setFinancialView(button.dataset.financialView));
@@ -627,7 +652,7 @@
 
   function normalizeCrm(crm = {}) {
     const source = crm && typeof crm === "object" ? crm : {};
-    const view = CRM_VIEWS.includes(source.view) ? source.view : "people";
+    const view = CRM_VIEWS.includes(source.view) ? source.view : "next";
     const profile = source.profile === "org" ? "org" : "me";
     const city = typeof source.city === "string" && source.city.trim() ? source.city.trim() : "Milton Keynes";
 
@@ -647,6 +672,7 @@
             const id = typeof person.id === "string" && person.id ? person.id : makeId();
             const name = person.name.replace(/\s+/g, " ").trim();
             const area = typeof person.area === "string" ? person.area.replace(/\s+/g, " ").trim() : "";
+            const status = CRM_STATUSES.includes(person.status) ? person.status : "new";
             const location = crmLocationForPerson({ ...person, id, name, area });
             const fallbackTrust = Number.isFinite(Number(person.trust)) ? Number(person.trust) : 50;
 
@@ -654,6 +680,13 @@
               id,
               name,
               area,
+              status,
+              context: normalizeShortText(person.context || person.role || person.company || person.why),
+              nextMove: normalizeShortText(person.nextMove || person.next || person.action),
+              notes: normalizeShortText(person.notes),
+              lastContact: normalizeOptionalDate(person.lastContact),
+              nextContact: normalizeOptionalDate(person.nextContact),
+              importance: clamp(Number.isFinite(Number(person.importance)) ? Number(person.importance) : 3, 1, 5),
               x: location.x,
               y: location.y,
               labourHours: Math.max(0, Number(person.labourHours) || 0),
@@ -703,7 +736,7 @@
 
   function normalizePersonal(personal = {}) {
     const source = personal && typeof personal === "object" ? personal : {};
-    const view = PERSONAL_VIEWS.includes(source.view) ? source.view : "sleep";
+    const view = PERSONAL_VIEWS.includes(source.view) ? source.view : "mind";
 
     return {
       view,
@@ -995,30 +1028,27 @@
   }
 
   function saveState(options = {}) {
-    localStorage.setItem(STORE_KEY, JSON.stringify(state));
-    saveAccountState();
+    persistStateLocal(state, { reason: options.reason || "save" });
     scheduleCloudSave(options);
   }
 
-  function saveStateLocalOnly() {
-    localStorage.setItem(STORE_KEY, JSON.stringify(state));
-    saveAccountState();
+  function saveStateLocalOnly(options = {}) {
+    persistStateLocal(state, { reason: options.reason || "local", backupBeforeOverwrite: options.backupBeforeOverwrite });
   }
 
-  function saveAccountState(source = state) {
+  function persistStateLocal(source, options = {}) {
+    writeStateToStorage(STORE_KEY, source, options);
+    saveAccountState(source, options);
+  }
+
+  function saveAccountState(source = state, options = {}) {
     const userId = session?.user?.id;
     if (!userId) {
       return;
     }
 
     try {
-      localStorage.setItem(
-        accountStoreKey(userId),
-        JSON.stringify({
-          ...source,
-          cachedAt: Date.now()
-        })
-      );
+      writeStateToStorage(accountStoreKey(userId), { ...source, cachedAt: Date.now() }, options);
     } catch (error) {
       console.warn("Couldn't save account cache", error);
     }
@@ -1039,6 +1069,167 @@
 
   function accountStoreKey(userId) {
     return `${ACCOUNT_STORE_PREFIX}${userId}`;
+  }
+
+  function writeStateToStorage(key, source, options = {}) {
+    const nextRaw = JSON.stringify(source);
+    const previousRaw = localStorage.getItem(key);
+
+    if (previousRaw && previousRaw !== nextRaw) {
+      try {
+        const previous = normalizeSavedState(JSON.parse(previousRaw));
+        const next = normalizeSavedState(source);
+        const shouldBackup =
+          stateHasUserData(previous) &&
+          (options.backupBeforeOverwrite || !stateHasUserData(next) || userStateScore(previous) > userStateScore(next));
+
+        if (shouldBackup) {
+          backupRawState(key, previousRaw, options.reason || "overwrite");
+        }
+      } catch (error) {
+        // Bad old storage should not block the current write.
+      }
+    }
+
+    localStorage.setItem(key, nextRaw);
+  }
+
+  function backupRawState(sourceKey, raw, reason) {
+    try {
+      const saved = normalizeSavedState(JSON.parse(raw));
+      if (!stateHasUserData(saved)) {
+        return;
+      }
+
+      const id = `${Date.now()}-${makeId()}`;
+      const backupKey = `${BACKUP_STORE_PREFIX}${id}`;
+      const entry = {
+        id,
+        key: backupKey,
+        sourceKey,
+        reason,
+        createdAt: Date.now(),
+        tasks: saved.tasks.length,
+        objectives: saved.objectives.length,
+        crm: saved.crm.people.length,
+        personal: saved.personal.sleep.length + saved.personal.food.length + saved.personal.mind.length,
+        learn: saved.learn.beliefs.length + saved.learn.people.length + saved.learn.categories.length
+      };
+      const index = JSON.parse(localStorage.getItem(BACKUP_INDEX_KEY) || "[]").filter((item) => item?.key);
+
+      localStorage.setItem(backupKey, raw);
+      index.unshift(entry);
+
+      while (index.length > MAX_LOCAL_BACKUPS) {
+        const old = index.pop();
+        if (old?.key) {
+          localStorage.removeItem(old.key);
+        }
+      }
+
+      localStorage.setItem(BACKUP_INDEX_KEY, JSON.stringify(index));
+    } catch (error) {
+      console.warn("Couldn't create local backup", error);
+    }
+  }
+
+  function stateHasUserData(source) {
+    return userStateScore(source) > 0;
+  }
+
+  function userStateScore(source) {
+    const saved = normalizeSavedState(source);
+    const profile = saved.reputation.profile;
+
+    return (
+      saved.tasks.length +
+      saved.objectives.length +
+      saved.crm.people.length +
+      saved.financial.accounts.length +
+      saved.personal.sleep.length +
+      saved.personal.food.length +
+      saved.personal.mind.length +
+      saved.learn.beliefs.length +
+      saved.learn.people.length +
+      saved.learn.categories.length +
+      saved.reputation.proofs.length +
+      saved.reputation.supporters.length +
+      (saved.draftText.trim() ? 1 : 0) +
+      (profile.displayName || profile.username || profile.bio || profile.avatarUrl ? 1 : 0)
+    );
+  }
+
+  function comparableUserState(source) {
+    const saved = normalizeSavedState(source);
+
+    return {
+      tasks: saved.tasks,
+      objectives: saved.objectives,
+      collapsedObjectives: saved.collapsedObjectives,
+      objectiveView: saved.objectiveView,
+      bottleneckTaskId: saved.bottleneckTaskId,
+      dayEndTime: saved.dayEndTime,
+      draftText: saved.draftText,
+      topCount: saved.topCount,
+      crm: saved.crm,
+      financial: saved.financial,
+      personal: saved.personal,
+      learn: saved.learn,
+      reputation: saved.reputation,
+      comparisons: saved.comparisons,
+      pairHistory: saved.pairHistory
+    };
+  }
+
+  function userStateSignature(source) {
+    return JSON.stringify(comparableUserState(source));
+  }
+
+  function cloudAppStateSnapshot(source = state) {
+    return {
+      ...normalizeSavedState(source),
+      currentPair: null
+    };
+  }
+
+  function encodeCloudDraftAppState(source) {
+    if (!source || typeof source !== "object") {
+      return "";
+    }
+
+    return `${CLOUD_DRAFT_STATE_PREFIX}${encodePayload(cloudAppStateSnapshot(source))}`;
+  }
+
+  function parseCloudDraftAppState(value) {
+    if (typeof value !== "string" || !value.startsWith(CLOUD_DRAFT_STATE_PREFIX)) {
+      return null;
+    }
+
+    return normalizeSavedState(decodePayload(value.slice(CLOUD_DRAFT_STATE_PREFIX.length)));
+  }
+
+  function encodeCloudTaskAppState(source) {
+    if (!source || typeof source !== "object") {
+      return "";
+    }
+
+    return `${CLOUD_STATE_TASK_PREFIX}${encodePayload(cloudAppStateSnapshot(source))}`;
+  }
+
+  function parseCloudTaskAppState(value) {
+    if (typeof value !== "string" || !value.startsWith(CLOUD_STATE_TASK_PREFIX)) {
+      return null;
+    }
+
+    return normalizeSavedState(decodePayload(value.slice(CLOUD_STATE_TASK_PREFIX.length)));
+  }
+
+  function isCloudStateTaskRecord(task) {
+    return task?.id === CLOUD_STATE_TASK_ID || parseCloudTaskAppState(task?.text);
+  }
+
+  function shouldUseCloudStateTask() {
+    return stateHasUserData(state) && cloudSchema.profileDraft === false && cloudSchema.profileObjectives === false;
   }
 
   function rememberedAccountEmail() {
@@ -1177,6 +1368,14 @@
   function initialView() {
     if (backendConfigured()) {
       return "account";
+    }
+
+    return defaultOpenView();
+  }
+
+  function defaultOpenView() {
+    if (hasScreen("personal")) {
+      return "personal";
     }
 
     if (activeTasks().length) {
@@ -1361,13 +1560,15 @@
       return;
     }
 
-    state = localFallbackForSession();
+    const fallback = localFallbackForSession();
+    if (stateHasUserData(fallback) || !stateHasUserData(state)) {
+      state = fallback;
+    }
     state.reputation.profileId = userId;
     lastSyncedInput = activeDraftText();
-    saveStateLocalOnly();
 
     if (activeView === "account") {
-      activeView = activeTasks().length ? "focus" : tasklessFallbackView();
+      activeView = defaultOpenView();
     }
 
     render();
@@ -1694,6 +1895,11 @@
       return;
     }
 
+    if (cloudLoadedUserId !== session.user.id && !stateHasUserData(state)) {
+      cloudSaveNeeded = false;
+      return;
+    }
+
     cloudBusy = true;
     cloudSaveNeeded = false;
     setSyncStatus("Saving");
@@ -1746,8 +1952,17 @@
   }
 
   async function updateCloudProfile(ownerId, payload) {
-    const draftPayload = {
+    const fallbackDraft = encodeCloudDraftAppState(payload.app_state) || payload.task_draft || "";
+    const fullPayload = {
       ...payload
+    };
+    const appStatePayload = {
+      ...payload
+    };
+    delete appStatePayload.app_state;
+    const draftPayload = {
+      ...appStatePayload,
+      task_draft: fallbackDraft
     };
     delete draftPayload.objective_map;
 
@@ -1772,10 +1987,18 @@
         ? legacyPayload
         : cloudSchema.profileObjectives === false
           ? draftPayload
-          : payload;
+          : cloudSchema.profileAppState === false
+            ? appStatePayload
+            : fullPayload;
     let { error } = await supabaseClient.from(TABLES.profiles).update(targetPayload).eq("id", ownerId);
 
-    if (error && isMissingColumnError(error) && targetPayload === payload) {
+    if (error && isMissingColumnError(error) && targetPayload === fullPayload) {
+      cloudSchema.profileAppState = false;
+      targetPayload = appStatePayload;
+      ({ error } = await supabaseClient.from(TABLES.profiles).update(appStatePayload).eq("id", ownerId));
+    }
+
+    if (error && isMissingColumnError(error) && targetPayload === appStatePayload) {
       cloudSchema.profileObjectives = false;
       targetPayload = draftPayload;
       ({ error } = await supabaseClient.from(TABLES.profiles).update(draftPayload).eq("id", ownerId));
@@ -1787,7 +2010,8 @@
       ({ error } = await supabaseClient.from(TABLES.profiles).update(legacyPayload).eq("id", ownerId));
     } else if (!error) {
       cloudSchema.profileDraft = targetPayload !== legacyPayload;
-      cloudSchema.profileObjectives = targetPayload === payload;
+      cloudSchema.profileObjectives = targetPayload === appStatePayload || targetPayload === fullPayload;
+      cloudSchema.profileAppState = targetPayload === fullPayload;
     }
 
     if (error) {
@@ -1818,6 +2042,8 @@
   }
 
   async function fetchCloudProfile(ownerId) {
+    const appStateSelect =
+      "display_name,username,bio,avatar_url,profile_visibility,proof_visibility,discoverable,allow_friend_requests,task_draft,objective_map,app_state";
     const mapSelect =
       "display_name,username,bio,avatar_url,profile_visibility,proof_visibility,discoverable,allow_friend_requests,task_draft,objective_map";
     const draftSelect =
@@ -1829,8 +2055,16 @@
         ? legacySelect
         : cloudSchema.profileObjectives === false
           ? draftSelect
-          : mapSelect;
+          : cloudSchema.profileAppState === false
+            ? mapSelect
+            : appStateSelect;
     let result = await supabaseClient.from(TABLES.profiles).select(select).eq("id", ownerId).single();
+
+    if (result.error && isMissingColumnError(result.error) && select === appStateSelect) {
+      cloudSchema.profileAppState = false;
+      select = mapSelect;
+      result = await supabaseClient.from(TABLES.profiles).select(mapSelect).eq("id", ownerId).single();
+    }
 
     if (result.error && isMissingColumnError(result.error) && select === mapSelect) {
       cloudSchema.profileObjectives = false;
@@ -1844,13 +2078,15 @@
       result = await supabaseClient.from(TABLES.profiles).select(legacySelect).eq("id", ownerId).single();
     } else if (!result.error) {
       cloudSchema.profileDraft = select !== legacySelect;
-      cloudSchema.profileObjectives = select === mapSelect;
+      cloudSchema.profileObjectives = select === mapSelect || select === appStateSelect;
+      cloudSchema.profileAppState = select === appStateSelect;
     }
 
     return {
       ...result,
       hasDraft: select !== legacySelect && !result.error,
-      hasObjectives: select === mapSelect && !result.error
+      hasObjectives: (select === mapSelect || select === appStateSelect) && !result.error,
+      hasAppState: select === appStateSelect && !result.error
     };
   }
 
@@ -1909,18 +2145,26 @@
       proof_count: stats.proofs,
       support_count: stats.supporters,
       task_draft: state.draftText || "",
-      objective_map: normalizeObjectives(state.objectives)
+      objective_map: normalizeObjectives(state.objectives),
+      app_state: cloudAppStateSnapshot(state)
     });
 
-    if (state.tasks.length) {
-      await upsertCloudTasks(
-        state.tasks.map((task) => taskRecord(task, ownerId)),
-        state.tasks.map((task) => basicTaskRecord(task, ownerId))
-      );
+    const taskRecords = state.tasks.map((task) => taskRecord(task, ownerId));
+    const basicTaskRecords = state.tasks.map((task) => basicTaskRecord(task, ownerId));
+    const keepTaskIds = state.tasks.map((task) => task.id);
+
+    if (shouldUseCloudStateTask()) {
+      taskRecords.push(cloudStateTaskRecord(ownerId));
+      basicTaskRecords.push(basicCloudStateTaskRecord(ownerId));
+      keepTaskIds.push(CLOUD_STATE_TASK_ID);
+    }
+
+    if (taskRecords.length) {
+      await upsertCloudTasks(taskRecords, basicTaskRecords);
     }
 
     if (cloudLoadedUserId === ownerId) {
-      await deleteMissingRows(TABLES.tasks, "owner_id", ownerId, state.tasks.map((task) => task.id));
+      await deleteMissingRows(TABLES.tasks, "owner_id", ownerId, keepTaskIds);
     }
 
     if (state.reputation.proofs.length) {
@@ -1981,8 +2225,18 @@
     if (proofsResult.error) throw proofsResult.error;
     if (signalsResult.error) throw signalsResult.error;
 
+    const rawCloudDraft = profileResult.hasDraft && typeof profileResult.data.task_draft === "string"
+      ? profileResult.data.task_draft
+      : "";
+    const cloudDraftState = parseCloudDraftAppState(rawCloudDraft);
+    const cloudStateTask = tasksResult.data.find((task) => isCloudStateTaskRecord(task));
+    const cloudTaskState = parseCloudTaskAppState(cloudStateTask?.text);
+    const visibleCloudTasks = tasksResult.data.filter((task) => !isCloudStateTaskRecord(task));
+    const cloudAppState = profileResult.hasAppState
+      ? normalizeSavedState(profileResult.data.app_state)
+      : cloudDraftState || cloudTaskState || freshState();
     const localTaskMap = new Map((localFallback?.tasks || []).map((task) => [task.id, task]));
-    const cloudTasks = tasksResult.data.map((task) => {
+    const cloudRowTasks = visibleCloudTasks.map((task) => {
       const localTask = localTaskMap.get(task.id);
       return {
         id: task.id,
@@ -2007,12 +2261,14 @@
       discoverable: profileResult.data.discoverable !== false,
       allowFriendRequests: profileResult.data.allow_friend_requests !== false
     });
-    const cloudDraft = profileResult.hasDraft && typeof profileResult.data.task_draft === "string"
-      ? profileResult.data.task_draft
-      : "";
-    const cloudObjectives = profileResult.hasObjectives
+    const cloudDraft = cloudDraftState ? cloudDraftState.draftText || "" : rawCloudDraft;
+    const cloudProfileObjectives = profileResult.hasObjectives
       ? normalizeObjectives(profileResult.data.objective_map)
-      : normalizeObjectives(localFallback?.objectives);
+      : cloudDraftState
+        ? normalizeObjectives(cloudDraftState.objectives)
+        : cloudTaskState
+          ? normalizeObjectives(cloudTaskState.objectives)
+        : normalizeObjectives(localFallback?.objectives);
     const cloudProofs = proofsResult.data.map((proof) => ({
       id: proof.id,
       taskId: proof.task_id || "",
@@ -2029,55 +2285,34 @@
       createdAt: signal.created_at ? Date.parse(signal.created_at) : Date.now()
     }));
 
-    const localTasks = Array.isArray(localFallback?.tasks) ? localFallback.tasks : [];
-    const localObjectives = normalizeObjectives(localFallback?.objectives);
-    const localProofs = localFallback?.reputation?.proofs || [];
-    const localSupporters = localFallback?.reputation?.supporters || [];
-    const mergedTasks = mergeTaskLists(cloudTasks, localTasks);
-    const mergedObjectives = mergeObjectiveMaps(cloudObjectives, localObjectives);
-    const mergedProofs = mergeById(cloudProofs, localProofs);
-    const mergedSupporters = mergeById(cloudSupporters, localSupporters);
-    const localAddedTasks = mergedTasks.length > cloudTasks.length;
-    const localAddedObjectives = mergedObjectives.length > cloudObjectives.length;
-    const localAddedProofs = mergedProofs.length > cloudProofs.length;
-    const localAddedSupporters = mergedSupporters.length > cloudSupporters.length;
-    const shouldKeepLocal = !cloudTasks.length && localTasks.length > 0;
+    const cloudSnapshot = {
+      ...cloudAppState,
+      tasks: mergeTaskLists(cloudRowTasks, cloudAppState.tasks),
+      objectives: mergeObjectiveMaps(cloudProfileObjectives, cloudAppState.objectives),
+      draftText: cloudAppState.draftText || cloudDraft,
+      reputation: {
+        profileId: ownerId,
+        profile: mergeProfiles(cloudAppState.reputation?.profile, cloudProfile),
+        proofs: mergeById(cloudProofs, cloudAppState.reputation?.proofs || []),
+        supporters: mergeById(cloudSupporters, cloudAppState.reputation?.supporters || [])
+      }
+    };
+    const mergedState = mergeLocalStates(cloudSnapshot, localFallback);
+    mergedState.reputation.profileId = ownerId;
+    mergedState.currentPair = null;
+    mergedState.draftText =
+      localFallback?.draftText || cloudSnapshot.draftText || mergedState.tasks.map((task) => task.text).join("\n");
 
-    if (shouldKeepLocal) {
-      state = {
-        ...localFallback,
-        tasks: mergedTasks,
-        objectives: mergedObjectives,
-        draftText: localFallback.draftText || cloudDraft || mergedTasks.map((task) => task.text).join("\n"),
-        reputation: {
-          profileId: ownerId,
-          profile: mergeProfiles(localFallback.reputation?.profile, cloudProfile),
-          proofs: mergedProofs,
-          supporters: mergedSupporters
-        }
-      };
-    } else {
-      state.tasks = mergedTasks;
-      state.objectives = mergedObjectives;
-      state.draftText = localFallback?.draftText || cloudDraft || mergedTasks.map((task) => task.text).join("\n");
-      state.reputation.profileId = ownerId;
-      state.reputation.profile = mergeProfiles(localFallback?.reputation?.profile, cloudProfile);
-      state.reputation.proofs = mergedProofs;
-      state.reputation.supporters = mergedSupporters;
-    }
-
-    state.currentPair = null;
+    state = stateHasUserData(mergedState) ? mergedState : cloudSnapshot;
     lastSyncedInput = activeDraftText();
-    saveStateLocalOnly();
+    saveStateLocalOnly({ reason: "cloud-pull", backupBeforeOverwrite: true });
+
+    const shouldPush =
+      stateHasUserData(state) &&
+      (!stateHasUserData(cloudSnapshot) || userStateSignature(state) !== userStateSignature(cloudSnapshot));
 
     return {
-      shouldPush:
-        shouldKeepLocal ||
-        localAddedTasks ||
-        localAddedObjectives ||
-        localAddedProofs ||
-        localAddedSupporters ||
-        Boolean(localFallback?.draftText && localFallback.draftText !== cloudDraft)
+      shouldPush
     };
   }
 
@@ -2119,6 +2354,31 @@
       done_at: toIso(task.doneAt),
       created_at: toIso(task.createdAt)
     };
+  }
+
+  function cloudStateTaskRecord(ownerId) {
+    const createdAt = Date.now();
+
+    return {
+      id: CLOUD_STATE_TASK_ID,
+      owner_id: ownerId,
+      text: encodeCloudTaskAppState(state),
+      justification: "",
+      score: 0,
+      wins: 0,
+      losses: 0,
+      seen: 0,
+      done: false,
+      done_at: null,
+      created_at: toIso(createdAt)
+    };
+  }
+
+  function basicCloudStateTaskRecord(ownerId) {
+    const record = cloudStateTaskRecord(ownerId);
+    delete record.justification;
+
+    return record;
   }
 
   function basicTaskRecord(task, ownerId) {
@@ -2198,7 +2458,7 @@
     const secondary = normalizePersonal(secondaryPersonal);
 
     return {
-      view: primary.view || secondary.view || "sleep",
+      view: primary.view || secondary.view || "mind",
       sleep: mergeById(primary.sleep, secondary.sleep),
       food: mergeById(primary.food, secondary.food),
       mind: mergeById(primary.mind, secondary.mind)
@@ -5332,7 +5592,7 @@
   }
 
   function renderCrm() {
-    if (!refs.crmPeopleList || !refs.crmMapPlot) {
+    if (!refs.crmPeopleList || !refs.crmMapPlot || !refs.crmNextList || !refs.crmPipelineList) {
       return;
     }
 
@@ -5360,7 +5620,9 @@
       panel.classList.toggle("is-active", panel.dataset.crmPanel === crm.view);
     });
 
+    renderCrmNext(people);
     renderCrmPeople(people);
+    renderCrmPipeline(people);
     renderCrmMap(people, crm.city);
     renderCrmMetric(refs.crmLabourList, refs.crmLabourTotal, people, "labourHours", formatCrmHours);
     renderCrmMetric(refs.crmMoneyList, refs.crmSpendTotal, people, "spend", formatCrmMoney);
@@ -5410,12 +5672,19 @@
     const person = {
       id: makeId(),
       name,
+      context: normalizeShortText(refs.crmContextInput.value),
+      nextMove: normalizeShortText(refs.crmNextInput.value),
+      nextContact: normalizeOptionalDate(refs.crmNextDateInput.value),
+      status: CRM_STATUSES.includes(refs.crmStatusInput.value) ? refs.crmStatusInput.value : "new",
       area: refs.crmAreaInput.value.replace(/\s+/g, " ").trim(),
       labourHours: Math.max(0, Number(refs.crmLabourInput.value) || 0),
       spend: Math.max(0, Number(refs.crmSpendInput.value) || 0),
       views: Math.max(0, Number(refs.crmViewsInput.value) || 0),
       trustMe: 50,
       trustOrg: 50,
+      lastContact: "",
+      notes: "",
+      importance: 3,
       createdAt: Date.now()
     };
     const location = crmLocationForPerson(person);
@@ -5430,16 +5699,98 @@
   function handleCrmPersonAction(event) {
     const button = event.target.closest("[data-crm-action]");
     if (!button) {
+      const row = event.target.closest("[data-crm-person-id]");
+      if (!row || event.target.closest("form, button, input, select")) {
+        return;
+      }
+
+      crmEditingPersonId = row.dataset.crmPersonId;
+      renderCrm();
+      window.setTimeout(() => document.querySelector(`[data-crm-edit-form="${CSS.escape(crmEditingPersonId)}"] input`)?.focus(), 0);
       return;
     }
 
     const id = button.dataset.id;
+    state.crm = normalizeCrm(state.crm);
+    const person = state.crm.people.find((item) => item.id === id);
+
     if (button.dataset.crmAction === "delete") {
-      state.crm = normalizeCrm(state.crm);
       state.crm.people = state.crm.people.filter((person) => person.id !== id);
+      if (crmEditingPersonId === id) {
+        crmEditingPersonId = "";
+      }
       saveState({ immediate: true });
       renderCrm();
+      return;
     }
+
+    if (!person) {
+      return;
+    }
+
+    if (button.dataset.crmAction === "contact") {
+      person.lastContact = localDateValue();
+      person.nextContact = addDaysToDate(localDateValue(), crmStatusCadence(person.status));
+      if (person.status === "new") {
+        person.status = "warm";
+      }
+      saveState({ immediate: true });
+      renderCrm();
+      return;
+    }
+
+    if (button.dataset.crmAction === "edit") {
+      crmEditingPersonId = id;
+      renderCrm();
+      window.setTimeout(() => document.querySelector(`[data-crm-edit-form="${CSS.escape(id)}"] input`)?.focus(), 0);
+      return;
+    }
+
+    if (button.dataset.crmAction === "cancel-edit") {
+      crmEditingPersonId = "";
+      renderCrm();
+    }
+  }
+
+  function saveCrmPersonEdit(event) {
+    const form = event.target.closest("[data-crm-edit-form]");
+    if (!form) {
+      return;
+    }
+
+    event.preventDefault();
+    state.crm = normalizeCrm(state.crm);
+    const person = state.crm.people.find((item) => item.id === form.dataset.crmEditForm);
+    if (!person) {
+      return;
+    }
+
+    const data = new FormData(form);
+    const name = normalizeShortText(data.get("name"));
+    if (!name) {
+      form.querySelector("[name='name']")?.focus();
+      return;
+    }
+
+    const area = normalizeShortText(data.get("area"));
+    const location = crmLocationForPerson({ id: person.id, name, area });
+    person.name = name;
+    person.context = normalizeShortText(data.get("context"));
+    person.nextMove = normalizeShortText(data.get("nextMove"));
+    person.nextContact = normalizeOptionalDate(data.get("nextContact"));
+    person.lastContact = normalizeOptionalDate(data.get("lastContact"));
+    person.status = CRM_STATUSES.includes(data.get("status")) ? data.get("status") : "new";
+    person.area = area;
+    person.notes = normalizeShortText(data.get("notes"));
+    person.importance = clamp(Number(data.get("importance")) || 3, 1, 5);
+    person.labourHours = Math.max(0, Number(data.get("labourHours")) || 0);
+    person.spend = Math.max(0, Number(data.get("spend")) || 0);
+    person.views = Math.max(0, Number(data.get("views")) || 0);
+    person.x = location.x;
+    person.y = location.y;
+    crmEditingPersonId = "";
+    saveState({ immediate: true });
+    renderCrm();
   }
 
   function handleCrmTrustInput(event) {
@@ -5462,12 +5813,352 @@
     renderCrmTrustSummary(state.crm.people);
   }
 
+  function renderCrmNext(people) {
+    const ranked = crmRankedPeople(people);
+    refs.crmCommand.innerHTML = "";
+    refs.crmNextList.innerHTML = "";
+
+    if (!ranked.length) {
+      refs.crmCommand.appendChild(createCrmEmpty("Add a person", "div"));
+      return;
+    }
+
+    refs.crmCommand.appendChild(createCrmCommand(ranked[0]));
+    ranked.slice(0, 9).forEach((person, index) => {
+      refs.crmNextList.appendChild(createCrmPersonRow(person, index, { showScore: true }));
+    });
+  }
+
+  function createCrmCommand(person) {
+    const card = document.createElement("section");
+    card.className = "crm-command-card";
+
+    const main = document.createElement("span");
+    main.className = "crm-command-main";
+
+    const label = document.createElement("small");
+    label.textContent = "Best next";
+
+    const name = document.createElement("strong");
+    name.textContent = person.name;
+
+    const move = document.createElement("span");
+    move.textContent = crmMoveText(person);
+
+    const meta = document.createElement("em");
+    meta.textContent = crmPersonMeta(person);
+
+    main.append(label, name, move, meta);
+
+    const done = document.createElement("button");
+    done.className = "icon-control crm-command-action";
+    done.type = "button";
+    done.dataset.crmAction = "contact";
+    done.dataset.id = person.id;
+    done.dataset.tooltip = "Contacted";
+    done.setAttribute("aria-label", `Mark ${person.name} contacted`);
+    done.appendChild(createControlIcon("check"));
+
+    card.append(main, done);
+    return card;
+  }
+
+  function renderCrmPipeline(people) {
+    refs.crmPipelineList.innerHTML = "";
+    if (!people.length) {
+      refs.crmPipelineList.appendChild(createCrmEmpty("Add a person"));
+      return;
+    }
+
+    const max = Math.max(1, ...CRM_STATUSES.map((status) => people.filter((person) => person.status === status).length));
+    CRM_STATUSES.forEach((status, index) => {
+      const group = people.filter((person) => person.status === status);
+      const item = document.createElement("li");
+      item.className = "crm-pipeline-card";
+      item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+
+      const head = document.createElement("span");
+      head.className = "crm-pipeline-head";
+
+      const label = document.createElement("strong");
+      label.textContent = crmStatusLabel(status);
+
+      const count = document.createElement("output");
+      count.textContent = String(group.length);
+      head.append(label, count);
+
+      const track = document.createElement("span");
+      track.className = "crm-metric-track";
+      const fill = document.createElement("span");
+      fill.style.transform = `scaleX(${clamp(group.length / max, 0.04, 1)})`;
+      track.appendChild(fill);
+
+      const names = document.createElement("span");
+      names.className = "crm-pipeline-names";
+      names.textContent = group.slice(0, 4).map((person) => person.name).join(", ") || "Empty";
+
+      item.append(head, track, names);
+      refs.crmPipelineList.appendChild(item);
+    });
+  }
+
+  function createCrmPersonRow(person, index, options = {}) {
+    const item = document.createElement("li");
+    item.className = "crm-person-row crm-smart-row";
+    item.classList.toggle("is-editing", crmEditingPersonId === person.id);
+    item.dataset.crmPersonId = person.id;
+    item.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+
+    const main = document.createElement("span");
+    main.className = "crm-person-main";
+
+    const name = document.createElement("span");
+    name.className = "crm-person-name";
+    name.textContent = person.name;
+
+    const meta = document.createElement("span");
+    meta.className = "crm-person-meta";
+    meta.textContent = crmPersonMeta(person);
+
+    const move = document.createElement("span");
+    move.className = "crm-person-move";
+    move.textContent = crmMoveText(person);
+
+    main.append(name, meta, move);
+
+    const stats = document.createElement("span");
+    stats.className = "crm-person-stats";
+    stats.append(createCrmPill(crmStatusLabel(person.status), "status"));
+    stats.append(createCrmPill(crmDueText(person), crmDueClass(person)));
+
+    const actions = document.createElement("span");
+    actions.className = "crm-person-actions";
+    actions.append(
+      createCrmIconAction("contact", person, "check", "Contacted"),
+      createCrmIconAction("edit", person, "pencil", "Edit"),
+      createCrmIconAction("delete", person, "trash", "Delete")
+    );
+
+    item.append(main, stats, actions);
+    if (crmEditingPersonId === person.id) {
+      item.appendChild(createCrmPersonEditForm(person));
+    }
+    return item;
+  }
+
+  function createCrmIconAction(action, person, icon, label) {
+    const button = document.createElement("button");
+    button.className = "icon-control crm-person-action";
+    button.type = "button";
+    button.dataset.crmAction = action;
+    button.dataset.id = person.id;
+    button.dataset.tooltip = label;
+    button.setAttribute("aria-label", `${label} ${person.name}`);
+    button.appendChild(createControlIcon(icon));
+    return button;
+  }
+
+  function createCrmPill(text, tone) {
+    const pill = document.createElement("span");
+    pill.className = `crm-pill ${tone ? `is-${tone}` : ""}`;
+    pill.textContent = text;
+    return pill;
+  }
+
+  function createCrmPersonEditForm(person) {
+    const form = document.createElement("form");
+    form.className = "crm-edit-form";
+    form.dataset.crmEditForm = person.id;
+
+    form.append(
+      createCrmEditInput("name", person.name, "Name"),
+      createCrmEditInput("context", person.context, "Why they matter"),
+      createCrmEditInput("nextMove", person.nextMove, "Next move"),
+      createCrmEditInput("nextContact", person.nextContact, "Next date", "date"),
+      createCrmEditSelect(person.status),
+      createCrmEditInput("area", person.area, "Area / postcode"),
+      createCrmEditInput("lastContact", person.lastContact, "Last contact", "date"),
+      createCrmEditInput("importance", person.importance, "Importance", "number", { min: "1", max: "5", step: "1" }),
+      createCrmEditInput("labourHours", person.labourHours, "Hours / month", "number", { min: "0", step: "0.25" }),
+      createCrmEditInput("spend", person.spend, "GBP / month", "number", { min: "0", step: "1" }),
+      createCrmEditInput("views", person.views, "Views / month", "number", { min: "0", step: "1" }),
+      createCrmEditInput("notes", person.notes, "Notes")
+    );
+
+    const save = document.createElement("button");
+    save.className = "primary";
+    save.type = "submit";
+    save.textContent = "Save";
+
+    const cancel = document.createElement("button");
+    cancel.className = "subtle";
+    cancel.type = "button";
+    cancel.dataset.crmAction = "cancel-edit";
+    cancel.dataset.id = person.id;
+    cancel.textContent = "Cancel";
+
+    form.append(save, cancel);
+    return form;
+  }
+
+  function createCrmEditInput(name, value, placeholder, type = "text", attrs = {}) {
+    const input = document.createElement("input");
+    input.name = name;
+    input.type = type;
+    input.value = value == null ? "" : String(value);
+    input.placeholder = placeholder;
+    Object.entries(attrs).forEach(([key, attrValue]) => input.setAttribute(key, attrValue));
+    return input;
+  }
+
+  function createCrmEditSelect(value) {
+    const select = document.createElement("select");
+    select.name = "status";
+    select.setAttribute("aria-label", "Status");
+    CRM_STATUSES.forEach((status) => {
+      const option = document.createElement("option");
+      option.value = status;
+      option.textContent = crmStatusLabel(status);
+      option.selected = status === value;
+      select.appendChild(option);
+    });
+    return select;
+  }
+
+  function crmRankedPeople(people) {
+    const maxValue = Math.max(1, ...people.map(crmCommercialValue));
+    return [...people].sort((a, b) =>
+      crmActionScore(b, maxValue) - crmActionScore(a, maxValue) ||
+      crmDueSortValue(a) - crmDueSortValue(b) ||
+      (b.createdAt || 0) - (a.createdAt || 0)
+    );
+  }
+
+  function crmActionScore(person, maxValue = 1) {
+    const trust = crmTrustValue(person);
+    const valueScore = crmCommercialValue(person) / Math.max(1, maxValue) * 24;
+    const urgency = crmUrgencyScore(person);
+    const status = crmStatusWeight(person.status);
+    return person.importance * 12 + trust * 0.32 + valueScore + urgency + status;
+  }
+
+  function crmCommercialValue(person) {
+    return (Number(person.labourHours) || 0) * 25 + (Number(person.spend) || 0) + (Number(person.views) || 0) * 0.08;
+  }
+
+  function crmUrgencyScore(person) {
+    const days = crmDaysUntil(person.nextContact);
+    if (days === null) return 5;
+    if (days < 0) return clamp(34 + Math.abs(days) * 2, 34, 58);
+    if (days === 0) return 32;
+    if (days <= 3) return 24;
+    if (days <= 7) return 12;
+    return 0;
+  }
+
+  function crmDueSortValue(person) {
+    const days = crmDaysUntil(person.nextContact);
+    return days === null ? 9999 : days;
+  }
+
+  function crmStatusWeight(status) {
+    return {
+      important: 18,
+      active: 12,
+      warm: 8,
+      new: 5,
+      dormant: -4
+    }[status] || 0;
+  }
+
+  function crmStatusCadence(status) {
+    return {
+      important: 3,
+      active: 7,
+      warm: 10,
+      new: 5,
+      dormant: 30
+    }[status] || 14;
+  }
+
+  function crmStatusLabel(status) {
+    return {
+      new: "New",
+      warm: "Warm",
+      active: "Active",
+      important: "Important",
+      dormant: "Dormant"
+    }[status] || "New";
+  }
+
+  function crmMoveText(person) {
+    return person.nextMove || "Decide next move";
+  }
+
+  function crmPersonMeta(person) {
+    const bits = [
+      crmStatusLabel(person.status),
+      person.context || person.area || state.crm.city,
+      crmDueText(person),
+      `Trust ${crmTrustValue(person)}%`
+    ].filter(Boolean);
+    return bits.join(" - ");
+  }
+
+  function crmDueText(person) {
+    const days = crmDaysUntil(person.nextContact);
+    if (days === null) return "No date";
+    if (days < 0) return `${Math.abs(days)}d late`;
+    if (days === 0) return "Today";
+    if (days === 1) return "Tomorrow";
+    return `${days}d`;
+  }
+
+  function crmDueClass(person) {
+    const days = crmDaysUntil(person.nextContact);
+    if (days === null) return "undated";
+    if (days < 0) return "late";
+    if (days <= 1) return "today";
+    if (days <= 7) return "soon";
+    return "later";
+  }
+
+  function crmDaysUntil(value) {
+    const target = crmDateTime(value);
+    if (target === null) {
+      return null;
+    }
+    return Math.round((target - crmDateTime(localDateValue())) / 86400000);
+  }
+
+  function crmDateTime(value) {
+    const date = normalizeOptionalDate(value);
+    if (!date) {
+      return null;
+    }
+    const [year, month, day] = date.split("-").map(Number);
+    return Date.UTC(year, month - 1, day);
+  }
+
+  function addDaysToDate(value, days) {
+    const date = normalizeOptionalDate(value) || localDateValue();
+    const [year, month, day] = date.split("-").map(Number);
+    const next = new Date(Date.UTC(year, month - 1, day));
+    next.setUTCDate(next.getUTCDate() + Number(days || 0));
+    return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
+  }
+
   function renderCrmPeople(people) {
     refs.crmPeopleList.innerHTML = "";
     if (!people.length) {
       refs.crmPeopleList.appendChild(createCrmEmpty("Add a person"));
       return;
     }
+
+    crmRankedPeople(people).forEach((person, index) => {
+      refs.crmPeopleList.appendChild(createCrmPersonRow(person, index, { showScore: true }));
+    });
+    return;
 
     people.forEach((person, index) => {
       const item = document.createElement("li");
@@ -5921,7 +6612,7 @@
   }
 
   function renderPersonal() {
-    if (!refs.sleepList || !refs.foodList || !refs.mindList) {
+    if (!refs.sleepList || !refs.foodList || !refs.mindList || !refs.proofWall) {
       return;
     }
 
@@ -6260,18 +6951,16 @@
     const entries = [...state.personal.mind].sort(compareEntriesByDate);
     refs.mindList.innerHTML = "";
     refs.mindFocusList.innerHTML = "";
+    refs.proofWall.innerHTML = "";
 
-    const recent = entries.slice(0, 7);
-    refs.mindMoodAvg.textContent = formatMindScore(averageEntryValue(recent, "mood"));
-    refs.mindFutureAvg.textContent = formatMindScore(averageEntryValue(recent, "future"));
-    renderMindFocus(entries);
+    const proof = mindProofSnapshot(entries);
+    refs.mindMoodAvg.textContent = String(proof.doneCount);
+    refs.mindFutureAvg.textContent = String(proof.mappedCount);
+    renderMindLift(entries[0], proof);
+    renderMindFocus(entries, proof);
+    renderProofWall(proof.items);
 
-    if (!entries.length) {
-      refs.mindList.appendChild(createVaultEmpty("Add a check-in"));
-      return;
-    }
-
-    entries.forEach((entry, index) => {
+    entries.slice(0, 3).forEach((entry, index) => {
       refs.mindList.appendChild(createVaultTextRow({
         title: mindEntryTitle(entry),
         meta: mindEntryMeta(entry),
@@ -6282,15 +6971,155 @@
     });
   }
 
-  function renderMindFocus(entries) {
+  function mindProofSnapshot(entries) {
+    const completedTasks = [...state.tasks]
+      .filter((task) => task.done)
+      .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    const visibleObjectives = state.objectives.filter((node) => !node.masked);
+    const latestObjective = visibleObjectives
+      .slice()
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
+    const rootObjective = visibleObjectives
+      .filter((node) => !node.parentId)
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
+    const imageNodes = visibleObjectives
+      .filter((node) => node.imageUrl)
+      .sort((a, b) => (b.imageUpdatedAt || b.createdAt || 0) - (a.imageUpdatedAt || a.createdAt || 0));
+    const accounts = normalizeFinancial(state.financial).accounts;
+    const financial = financialTotals(accounts);
+    const people = normalizeCrm(state.crm).people;
+    const proofRecords = Array.isArray(state.reputation?.proofs) ? state.reputation.proofs : [];
+    const sleepEntries = [...state.personal.sleep].sort(compareEntriesByDate);
+    const foodEntries = [...state.personal.food].sort(compareEntriesByDate);
     const latest = entries[0];
-    const items = latest
-      ? [
-          latest.lookForward ? `Future: ${latest.lookForward}` : "",
-          latest.win ? `Win: ${latest.win}` : "",
-          latest.next ? `Next: ${latest.next}` : ""
-        ].filter(Boolean)
-      : ["One win. One future. One next step."];
+    const items = [];
+    const add = (item) => {
+      if (!item || !item.title) {
+        return;
+      }
+      items.push(item);
+    };
+
+    if (latest?.win) {
+      add({ type: "Win", title: latest.win, meta: formatEntryDate(latest.date) });
+    }
+    if (latest?.lookForward) {
+      add({ type: "Future", title: latest.lookForward, meta: "Worth moving toward" });
+    }
+    if (completedTasks.length) {
+      add({
+        type: "Done",
+        title: `${completedTasks.length} ${completedTasks.length === 1 ? "task" : "tasks"} done`,
+        meta: completedTasks[0].text,
+        imageUrl: taskImageForTask(completedTasks[0].id)
+      });
+    }
+    if (completedTasks.length > 1) {
+      add({
+        type: "Latest",
+        title: completedTasks[0].text,
+        meta: `Finished ${formatDate(completedTasks[0].doneAt)}`,
+        imageUrl: taskImageForTask(completedTasks[0].id)
+      });
+    }
+    if (rootObjective || latestObjective) {
+      add({
+        type: "Objective",
+        title: rootObjective?.text || latestObjective.text,
+        meta: `${state.objectives.length} mapped`
+      });
+    }
+    if (imageNodes[0]) {
+      add({
+        type: "Vision",
+        title: imageNodes[0].text,
+        meta: `${imageNodes.length} ${imageNodes.length === 1 ? "image" : "images"} saved`,
+        imageUrl: imageNodes[0].imageUrl
+      });
+    }
+    if (accounts.length) {
+      add({
+        type: "Money",
+        title: formatFinancialMoney(financial.balance),
+        meta: `${accounts.length} ${accounts.length === 1 ? "account" : "accounts"} visible`
+      });
+    }
+    if (people.length) {
+      add({
+        type: "Network",
+        title: `${people.length} ${people.length === 1 ? "relationship" : "relationships"}`,
+        meta: state.crm.city || "Mapped"
+      });
+    }
+    if (sleepEntries.length) {
+      const recentSleep = sleepEntries.slice(0, 7);
+      const sleepAverage = recentSleep.reduce((sum, entry) => sum + entry.hours, 0) / recentSleep.length;
+      add({
+        type: "Sleep",
+        title: formatSleepHours(sleepAverage),
+        meta: "Recent average"
+      });
+    }
+    if (foodEntries.length) {
+      const recentDates = recentUniqueDates(foodEntries, 7);
+      const recentProtein = recentDates.map((date) =>
+        foodEntries.filter((entry) => entry.date === date).reduce((sum, entry) => sum + entry.protein, 0)
+      );
+      const proteinAverage = recentProtein.length
+        ? recentProtein.reduce((sum, value) => sum + value, 0) / recentProtein.length
+        : 0;
+      add({
+        type: "Food",
+        title: formatProtein(proteinAverage),
+        meta: "Protein average"
+      });
+    }
+    if (proofRecords.length) {
+      add({
+        type: "Public",
+        title: `${proofRecords.length} ${proofRecords.length === 1 ? "proof" : "proofs"}`,
+        meta: proofRecords[0].taskText || "Evidence saved"
+      });
+    }
+
+    if (!items.length) {
+      add({
+        type: "Ready",
+        title: "No input needed.",
+        meta: "This fills itself as you use the app."
+      });
+      add({
+        type: "Proof",
+        title: "Completed tasks, images, money and relationships will appear here.",
+        meta: "A calmer way to see progress."
+      });
+    }
+
+    return {
+      doneCount: completedTasks.length,
+      mappedCount: state.objectives.length,
+      imageCount: imageNodes.length,
+      accountCount: accounts.length,
+      peopleCount: people.length,
+      objectiveTitle: rootObjective?.text || latestObjective?.text || "",
+      items: items.slice(0, 8)
+    };
+  }
+
+  function renderMindFocus(entries, proof) {
+    const latest = entries[0];
+    const items = [
+      latest?.win ? `Win: ${latest.win}` : "",
+      latest?.next ? `Next: ${latest.next}` : "",
+      proof.doneCount ? `${proof.doneCount} done` : "",
+      proof.imageCount ? `${proof.imageCount} ${proof.imageCount === 1 ? "image" : "images"}` : "",
+      proof.accountCount ? "Money visible" : "",
+      proof.peopleCount ? `${proof.peopleCount === 1 ? "Relationship" : "Relationships"} mapped` : ""
+    ].filter(Boolean);
+
+    if (!items.length) {
+      items.push("No input needed");
+    }
 
     refs.mindFocusList.classList.toggle("is-empty", items.length === 0);
     items.slice(0, 3).forEach((text, index) => {
@@ -6301,14 +7130,102 @@
     });
   }
 
+  function renderProofWall(items) {
+    refs.proofWall.classList.toggle("is-empty", items.length === 0);
+    items.forEach((item, index) => {
+      refs.proofWall.appendChild(createProofWallItem(item, index));
+    });
+  }
+
+  function createProofWallItem(item, index) {
+    const card = document.createElement("li");
+    card.className = `proof-wall-item${item.imageUrl ? " has-image" : ""}`;
+    card.style.animationDelay = `${Math.min(index, 7) * 28}ms`;
+
+    if (item.imageUrl) {
+      card.appendChild(createImageNode(item.imageUrl, "proof-wall-image"));
+    }
+
+    const type = document.createElement("small");
+    type.className = "proof-wall-type";
+    type.textContent = item.type || "Proof";
+
+    const title = document.createElement("strong");
+    title.textContent = item.title;
+
+    const meta = document.createElement("span");
+    meta.className = "proof-wall-meta";
+    meta.textContent = item.meta || "";
+
+    card.append(type, title, meta);
+    return card;
+  }
+
+  function renderMindLift(latest, proof) {
+    const proofLine = mindProofLine(proof);
+
+    if (latest?.lookForward) {
+      const win = latest.win || "you showed up";
+      const next = latest.next || "one small move";
+      refs.mindLiftKicker.textContent = mindLiftKicker(latest);
+      refs.mindLiftTitle.textContent = `You are moving toward ${latest.lookForward}.`;
+      refs.mindLiftLine.textContent = `${win}. Next: ${next}.`;
+      return;
+    }
+
+    if (proof.objectiveTitle) {
+      refs.mindLiftKicker.textContent = proof.doneCount ? "Proof" : "Direction";
+      refs.mindLiftTitle.textContent = `You are building ${proof.objectiveTitle}.`;
+      refs.mindLiftLine.textContent = proofLine;
+      return;
+    }
+
+    if (proof.doneCount) {
+      refs.mindLiftKicker.textContent = "Proof";
+      refs.mindLiftTitle.textContent = "You are already moving.";
+      refs.mindLiftLine.textContent = proofLine;
+      return;
+    }
+
+    refs.mindLiftKicker.textContent = "Ready";
+    refs.mindLiftTitle.textContent = "Your proof wall is ready.";
+    refs.mindLiftLine.textContent = "No input needed. It fills itself as you finish tasks and add evidence.";
+  }
+
+  function mindProofLine(proof) {
+    const pieces = [];
+    if (proof.doneCount) pieces.push(`${proof.doneCount} done`);
+    if (proof.mappedCount) pieces.push(`${proof.mappedCount} mapped`);
+    if (proof.imageCount) pieces.push(`${proof.imageCount} ${proof.imageCount === 1 ? "image" : "images"}`);
+    if (proof.accountCount) pieces.push("money visible");
+    if (proof.peopleCount) pieces.push(`${proof.peopleCount === 1 ? "relationship" : "relationships"} mapped`);
+    return pieces.length ? `Proof so far: ${pieces.join(", ")}.` : "Proof will collect here automatically.";
+  }
+
+  function mindLiftKicker(entry) {
+    if (entry.future >= 8) {
+      return "Excited";
+    }
+
+    if (entry.mood >= 8) {
+      return "Good";
+    }
+
+    if (entry.win) {
+      return "Momentum";
+    }
+
+    return "Forward";
+  }
+
   function mindEntryTitle(entry) {
     return entry.lookForward || entry.win || entry.next || formatEntryDate(entry.date);
   }
 
   function mindEntryMeta(entry) {
     const bits = [];
-    if (entry.mood) bits.push(`Mood ${entry.mood}/10`);
-    if (entry.future) bits.push(`Future ${entry.future}/10`);
+    if (entry.mood) bits.push(`Feel ${entry.mood}/10`);
+    if (entry.future) bits.push(`Excited ${entry.future}/10`);
     if (entry.win && entry.win !== mindEntryTitle(entry)) bits.push(`Win: ${entry.win}`);
     if (entry.next && entry.next !== mindEntryTitle(entry)) bits.push(`Next: ${entry.next}`);
     bits.push(formatEntryDate(entry.date));
@@ -6857,6 +7774,14 @@
 
   function normalizeDateValue(value) {
     return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : localDateValue();
+  }
+
+  function normalizeOptionalDate(value) {
+    return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+  }
+
+  function normalizeShortText(value) {
+    return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
   }
 
   function normalizeTimeValue(value) {
@@ -8421,6 +9346,11 @@
   }
 
   function clearLocalAccountData() {
+    const stored = localStorage.getItem(STORE_KEY);
+    if (stored) {
+      backupRawState(STORE_KEY, stored, "sign-out");
+    }
+
     state = freshState();
     cloudLoadedUserId = null;
     cloudSaveNeeded = false;
