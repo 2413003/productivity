@@ -85,6 +85,10 @@ summary:focus-visible {
   overflow: visible;
 }
 
+.nav:not(:has(button:not(.is-hidden))) {
+  display: none;
+}
+
 .quiet-row button,
 .subtle,
 .stepper button,
@@ -2643,9 +2647,13 @@ h2 {
 .crm-form,
 .vault-form {
   display: grid;
-  grid-template-columns: minmax(160px, 1.2fr) minmax(130px, 1fr) repeat(3, minmax(96px, 0.7fr)) auto;
+  grid-template-columns: repeat(6, minmax(96px, 1fr)) auto;
   gap: 8px;
   margin-top: 10px;
+}
+
+.crm-field-wide {
+  grid-column: span 2;
 }
 
 .vault-form.is-wide {
@@ -2666,6 +2674,7 @@ h2 {
 }
 
 .crm-form input,
+.crm-form select,
 .vault-form input,
 .vault-form select,
 .learn-person-form input {
@@ -2678,6 +2687,7 @@ h2 {
   padding: 0 10px;
 }
 
+.crm-form select,
 .vault-form select {
   appearance: none;
 }
@@ -2735,11 +2745,69 @@ h2 {
   display: block;
 }
 
+.crm-next-list,
 .crm-people-list,
+.crm-pipeline-list,
 .crm-metric-list {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.crm-command {
+  min-height: 116px;
+  margin-bottom: 12px;
+}
+
+.crm-command-card {
+  min-height: 116px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 18px 0;
+}
+
+.crm-command-main {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.crm-command-main small {
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.crm-command-main strong {
+  color: var(--ink);
+  font-size: clamp(1.55rem, 5vw, 2.9rem);
+  font-weight: 760;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.crm-command-main span {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.crm-command-main em {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.crm-command-action {
+  opacity: 1;
 }
 
 .crm-person-row {
@@ -2750,6 +2818,11 @@ h2 {
   min-height: 62px;
   border-top: 1px solid var(--line);
   animation: rowIn 240ms ease both;
+  cursor: pointer;
+}
+
+.crm-person-row.is-editing {
+  cursor: default;
 }
 
 .crm-person-row:last-child {
@@ -2780,15 +2853,124 @@ h2 {
   margin-top: 4px;
 }
 
-.crm-person-delete {
-  opacity: 0;
-  pointer-events: none;
+.crm-person-move {
+  display: block;
+  margin-top: 5px;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 620;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
-.crm-person-row:hover .crm-person-delete,
-.crm-person-row:focus-within .crm-person-delete {
+.crm-person-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.crm-pill {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.64);
+  color: var(--muted);
+  padding: 0 8px;
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.crm-pill.is-late,
+.crm-pill.is-today {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--line));
+}
+
+.crm-pill.is-score,
+.crm-pill.is-status {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+}
+
+.crm-person-actions {
+  display: inline-flex;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.crm-person-row:hover .crm-person-actions,
+.crm-person-row:focus-within .crm-person-actions,
+.crm-person-row.is-editing .crm-person-actions {
   opacity: 1;
   pointer-events: auto;
+}
+
+.crm-edit-form {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(96px, 1fr)) auto auto;
+  gap: 8px;
+  padding: 10px 0 4px;
+}
+
+.crm-edit-form input,
+.crm-edit-form select {
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 0 10px;
+}
+
+.crm-pipeline-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.crm-pipeline-card {
+  min-height: 132px;
+  display: grid;
+  align-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+  padding: 12px;
+  animation: rowIn 240ms ease both;
+}
+
+.crm-pipeline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.crm-pipeline-head strong {
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 720;
+}
+
+.crm-pipeline-head output,
+.crm-pipeline-names {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.crm-pipeline-names {
+  overflow-wrap: anywhere;
 }
 
 .crm-map {
@@ -3025,6 +3207,10 @@ h2 {
   text-transform: uppercase;
 }
 
+.proof-summary {
+  margin-bottom: 12px;
+}
+
 .vault-list {
   margin: 0;
   padding: 0;
@@ -3039,6 +3225,112 @@ h2 {
   margin: 12px 0 2px;
   padding: 0;
   list-style: none;
+}
+
+.mind-lift {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 2px;
+  padding: clamp(18px, 4vw, 28px) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.mind-lift small {
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.mind-lift strong {
+  max-width: 860px;
+  color: var(--ink);
+  font-size: clamp(1.65rem, 5vw, 3.5rem);
+  font-weight: 760;
+  letter-spacing: 0;
+  line-height: 1.02;
+}
+
+.mind-lift span {
+  max-width: 760px;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.proof-wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 10px;
+  margin: 14px 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.proof-wall.is-empty {
+  display: none;
+}
+
+.proof-wall-item {
+  min-width: 0;
+  min-height: 138px;
+  display: grid;
+  align-content: end;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.68);
+  padding: 12px;
+  overflow: hidden;
+  animation: rowIn 240ms ease both;
+}
+
+.proof-wall-item.has-image {
+  align-content: start;
+  min-height: 194px;
+}
+
+.proof-wall-image {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--line);
+}
+
+.proof-wall-type {
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.proof-wall-item strong {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.proof-wall-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 560;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.mind-checkins {
+  margin-top: 6px;
+}
+
+.vault-panel[data-personal-panel="mind"] > .vault-add {
+  margin-top: 14px;
 }
 
 .sleep-patterns.is-empty,
@@ -3748,6 +4040,7 @@ h2 {
   .objective-child-form,
   .objective-rename-form,
   .crm-form,
+  .crm-edit-form,
   .vault-form,
   .finance-form,
   .vault-form.is-wide,
@@ -3755,6 +4048,10 @@ h2 {
   .vault-edit-form,
   .learn-person-form {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .crm-field-wide {
+    grid-column: auto;
   }
 
   .objective-state {

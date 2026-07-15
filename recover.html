@@ -59,13 +59,7 @@
   }
 
   async function recover() {
-    const recovered = await fetch(".codex-recovered-runmk-state.json", { cache: "no-store" }).then((response) => {
-      if (!response.ok) {
-        throw new Error("Recovered data file was not found.");
-      }
-
-      return response.json();
-    });
+    const recovered = await fetchRecoveredState();
     const currentRaw = localStorage.getItem(STORE_KEY);
     const current = currentRaw ? JSON.parse(currentRaw) : null;
     const currentScore = current ? stateScore(current) : 0;
@@ -90,6 +84,23 @@
     window.setTimeout(() => {
       window.location.replace(`index.html?recovered=${now}`);
     }, 650);
+  }
+
+  async function fetchRecoveredState() {
+    const files = ["recovered-state.json", ".codex-recovered-runmk-state.json"];
+
+    for (const file of files) {
+      try {
+        const response = await fetch(file, { cache: "no-store" });
+        if (response.ok) {
+          return response.json();
+        }
+      } catch (error) {
+        // Try the next local recovery file.
+      }
+    }
+
+    throw new Error("Recovered data file was not found.");
   }
 
   recover().catch((error) => {
